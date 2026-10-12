@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>卡牌名字动画 · 高级版</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:#07070a;color:#e8e8ec;
+    font-family:"Microsoft YaHei","PingFang SC","Hiragino Sans GB",sans-serif;overflow-x:hidden}
+  .head{padding:18px 22px;background:linear-gradient(180deg,#12121a,#0a0a10);
+    border-bottom:1px solid #23232e;position:sticky;top:0;z-index:100}
+  .head h1{margin:0 0 7px;font-size:20px;letter-spacing:2px;
+    background:linear-gradient(90deg,#ffe9a8,#fff,#f5c542,#fff,#ffe9a8);
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .head p{margin:0;font-size:12.5px;color:#8a8a96;line-height:1.7}
+  .bar{padding:10px 22px;background:#101018;border-bottom:1px solid #23232e;
+    display:flex;gap:9px;flex-wrap:wrap;align-items:center;position:sticky;top:82px;z-index:99}
+  .bar .lab{font-size:12.5px;color:#7a7a88}
+  .bar button{background:#1e1e28;color:#cfcfda;border:1px solid #3a3a4a;padding:7px 15px;
+    border-radius:6px;cursor:pointer;font-size:12.5px;transition:.15s;letter-spacing:.5px}
+  .bar button:hover{background:#2a2a38;border-color:#5a5a72;color:#fff}
+  .bar button.on{background:#c9a227;border-color:#f5d76e;color:#1a1408;font-weight:bold}
+  .bar input[type=range]{width:130px;accent-color:#c9a227}
+  .grid{display:grid;grid-template-columns:1fr;gap:0}
+  .cell{position:relative;height:560px;overflow:hidden;
+    border-bottom:1px solid #16161e;background:radial-gradient(ellipse at 50% 50%,#0e0e16 0%,#07070a 70%)}
+  .cell canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .meta{position:absolute;left:20px;top:16px;z-index:6;pointer-events:none}
+  .meta .no{font-size:12px;color:#c9a227;letter-spacing:3px;font-weight:bold}
+  .meta .nm{font-size:17px;color:#fff;letter-spacing:1.5px;margin:3px 0 6px;font-weight:bold}
+  .meta .ds{font-size:12px;color:#7a7a88;line-height:1.65;max-width:340px}
+  .meta .perf{font-size:11px;color:#4a4a58;margin-top:6px;font-variant-numeric:tabular-nums}
+  .cell .rp{position:absolute;right:18px;bottom:16px;z-index:6;
+    background:rgba(30,30,40,.85);color:#cfcfda;border:1px solid #3a3a4a;
+    padding:6px 14px;border-radius:5px;cursor:pointer;font-size:12px;backdrop-filter:blur(6px)}
+  .cell .rp:hover{background:rgba(50,50,66,.9);color:#fff}
+  .tip{padding:11px 22px;background:#1a1410;color:#d9a441;font-size:12px;border-bottom:1px solid #2a2018}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>卡牌名字动画 · 高级版</h1>
+  <p>全部重写：<b>Canvas 粒子 + requestAnimationFrame 主循环 + 时间轴插值</b>，不再用 setTimeout 排动画，也不再用 SVG 滤镜（手机卡顿的元凶）。<br>
+     发光用「径向渐变 + 叠加混合（lighter）」在 GPU 上合成；粒子带重力、阻力、湍流；整段动画有镜头推拉。</p>
+</div>
+
+<div class="bar">
+  <span class="lab">速度</span>
+  <button class="spd" data-s="1.6">慢</button>
+  <button class="spd on" data-s="1">正常</button>
+  <button class="spd" data-s="0.65">快</button>
+  <span class="lab" style="margin-left:14px">粒子量</span>
+  <input type="range" id="pcount" min="20" max="130" value="100">
+  <span class="lab" id="pcountLab">100%</span>
+  <span style="width:14px"></span>
+  <button id="btnAll">全部重播</button>
+  <span class="lab" style="margin-left:auto" id="fps">FPS —</span>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<script>
+// ================================================================
+//  渲染底座
+//   ・一个全局 RAF 主循环，按 delta time 驱动所有效果
+//   ・每个效果 = 一个 update(t, dt) + 一个 draw(ctx)
+//   ・发光：径向渐变 + globalCompositeOperation="lighter"
+//   ・粒子数按设备性能自动缩放（手机减半）
+// ================================================================
+
+const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+                  (navigator.maxTouchPoints > 1 && Math.min(innerWidth, innerHeight) < 700);
+const BASE_PARTICLES = IS_MOBILE ? 46 : 100;
+let PARTICLE_SCALE = 1;          // 用户滑块
+let SPEED = 1;                   // 全局速度
+
+const DPR = Math.min(window.devicePixelRatio || 1, IS_MOBILE ? 2 : 2);
+
+// ---- 缓动函数（这是"高级感"的一半来源）----
+const Ease = {
+  linear: t => t,
+  outCubic: t => 1 - Math.pow(1 - t, 3),
+  outQuart: t => 1 - Math.pow(1 - t, 4),
+  outExpo: t => t >= 1 ? 1 : 1 - Math.pow(2, -10 * t),
+  inOutCubic: t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+  outBack: t => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); },
+  outElastic: t => { if (t === 0 || t === 1) return t; const p = .32;
+    return Math.pow(2, -10 * t) * Math.sin((t - p / 4) * (2 * Math.PI) / p) + 1; },
+};
+const clamp01 = t => t < 0 ? 0 : (t > 1 ? 1 : t);
+const lerp = (a, b, t) => a + (b - a) * t;
+const rand = (a, b) => a + Math.random() * (b - a);
+
+// ---- 排版：把文字画出来，同时拿到"字形点云"（给粒子当目标）----
+function layoutText(text, W, H, opt = {}) {
+  const off = document.createElement("canvas");
+  off.width = W; off.height = H;
+  const c = off.getContext("2d");
+  let size = opt.size || Math.min(W * .16, H * .30);
+  const family = opt.family || '"Microsoft YaHei","PingFang SC",sans-serif';
+  const weight = opt.weight || "900";
+  const spacing = opt.spacing || 2;         // 字距
+  // 自适应：太宽就缩小
+  function setFont(s) { c.font = `${weight} ${s}px ${family}`; }
+  setFont(size);
+  let total = 0;
+  for (const ch of text) total += c.measureText(ch).width + spacing;
+  total -= spacing;
+  if (total > W * .86) {
+    size *= (W * .86) / total;
+    setFont(size);
+    total = 0;
+    for (const ch of text) total += c.measureText(ch).width + spacing;
+    total -= spacing;
+  }
+  const cx = W / 2, cy = H / 2;
+  let x = cx - total / 2;
+  const chars = [];
+  c.textBaseline = "middle";
+  c.fillStyle = "#fff";
+  for (const ch of text) {
+    const w = c.measureText(ch).width;
+    chars.push({ ch, x, w });
+    x += w + spacing;
+  }
+  // 画整行
+  c.fillStyle = "#fff";
+  x = cx - total / 2;
+  for (const cc of chars) { c.fillText(cc.ch, cc.x, cy); }
+  // 点云（步长越小越密）
+  const step = opt.step || 3;
+  const img = c.getImageData(0, 0, W, H).data;
+  const pts = [];
+  for (let py = 0; py < H; py += step) {
+    for (let px = 0; px < W; px += step) {
+      const a = img[(py * W + px) * 4 + 3];
+      if (a > 140) pts.push(px, py);
+    }
+  }
+  return { canvas: off, chars, size, total, cx, cy, pts, step };
+}
+
+// ---- 效果基类 ----
+class Effect {
+  constructor(root, text) {
+    this.root = root;
+    this.text = text;
+    this.canvas = document.createElement("canvas");
+    root.appendChild(this.canvas);
+    this.ctx = this.canvas.getContext("2d", { alpha: true });
+    this.t = 0;                    // 秒
+    this.parts = [];
+    this.dead = false;
+    this.resize();
+    this.build();
+  }
+  resize() {
+    const r = this.root.getBoundingClientRect();
+    this.W = Math.max(320, Math.round(r.width));
+    this.H = Math.max(200, Math.round(r.height));
+    this.canvas.width = this.W * DPR;
+    this.canvas.height = this.H * DPR;
+    this.ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    if (this.layout) this.relayout();
+  }
+  relayout() {
+    this.layout = layoutText(this.text, this.W, this.H, this.layoutOpt || {});
+    this.onLayout && this.onLayout();
+  }
+  build() {
+    this.layoutOpt = this.textOpt ? this.textOpt() : {};
+    this.relayout();
+    this.init && this.init();
+  }
+  // 通用粒子推进
+  stepParticles(dt) {
+    const P = this.parts;
+    for (let i = P.length - 1; i >= 0; i--) {
+      const p = P[i];
+      p.life += dt;
+      if (p.life >= p.max) { P.splice(i, 1); continue; }
+      p.vy += (p.g || 0) * dt;
+      p.vx *= Math.pow(p.drag || .92, dt * 60);
+      p.vy *= Math.pow(p.drag || .92, dt * 60);
+      if (p.turb) {
+        p.vx += Math.sin(p.life * 5 + p.seed) * p.turb * dt * 60;
+        p.vy += Math.cos(p.life * 4.3 + p.seed * 1.7) * p.turb * dt * 60;
+      }
+      p.x += p.vx * dt * 60;
+      p.y += p.vy * dt * 60;
+    }
+  }
+  // 一个"发光点"（叠加混合）
+  glowDot(x, y, r, color, alpha) {
+    const ctx = this.ctx;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, color);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
+  }
+  destroy() { this.dead = true; try { this.canvas.remove(); } catch (e) { } }
+}
+
+// ================================================================
+//  ① 鎏金 · 光扫：字是"金箔压出来"的，一道高光从左上扫到右下
+//     手法：离屏画字 → 用渐变做金色 → 高光遮罩平移 → 边缘加火星
+// ================================================================
+class FxGold extends Effect {
+  textOpt() { return { weight: "900", spacing: 4 }; }
+  init() {
+    this.L = this.layout;
+    // 金色多层渐变（这是"高级感"的关键：不是纯色，是 5 段色阶）
+    this.makeGoldTexture();
+    // 边缘火星（从字形轮廓上取样）
+    this.edgePts = this.sampleEdge(260);
+    for (let i = 0; i < this.edgePts.length * PARTICLE_SCALE * .5; i++) {
+      const e = this.edgePts[(Math.random() * this.edgePts.length) | 0];
+      this.parts.push(this.newSpark(e));
+    }
+  }
+  newSpark(e) {
+    return { x: e[0] + rand(-6, 6), y: e[1] + rand(-6, 6),
+      vx: rand(-.06, .06), vy: rand(-.35, -.06),
+      life: rand(-1.6, 0), max: rand(.9, 2.1), r: rand(1.1, 3.4),
+      g: -0.0012, drag: .985, turb: .004, seed: Math.random() * 9,
+      c: Math.random() < .5 ? "rgba(255,232,150,1)" : "rgba(255,196,80,1)" };
+  }
+  // 从字形边缘取样（用邻居判断）
+  sampleEdge(n) {
+    const { W, H } = this, step = this.L.step, pts = this.L.pts, out = [];
+    const set = new Set();
+    for (let i = 0; i < pts.length; i += 2) set.add(pts[i] + "," + pts[i + 1]);
+    for (let i = 0; i < pts.length; i += 2) {
+      const x = pts[i], y = pts[i + 1];
+      if (!set.has((x - step) + "," + y) || !set.has((x + step) + "," + y) ||
+          !set.has(x + "," + (y - step)) || !set.has(x + "," + (y + step))) out.push([x, y]);
+    }
+    // 洗牌取前 n 个
+    for (let i = out.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; const tmp = out[i]; out[i] = out[j]; out[j] = tmp; }
+    return out.slice(0, n);
+  }
+  makeGoldTexture() {
+    const { W, H } = this;
+    const off = document.createElement("canvas");
+    off.width = W * DPR; off.height = H * DPR;
+    const c = off.getContext("2d");
+    c.setTransform(DPR, 0, 0, DPR, 0, 0);
+    // 1) 画字
+    c.drawImage(this.L.canvas, 0, 0, W, H);
+    // 2) 用 source-in 填金色渐变
+    c.globalCompositeOperation = "source-in";
+    const g = c.createLinearGradient(0, H / 2 - this.L.size * .6, 0, H / 2 + this.L.size * .6);
+    g.addColorStop(0.00, "#fffbe8");
+    g.addColorStop(0.22, "#ffe98a");
+    g.addColorStop(0.42, "#e8b53c");
+    g.addColorStop(0.52, "#8a5c12");
+    g.addColorStop(0.60, "#f5d76e");
+    g.addColorStop(0.78, "#fff6c4");
+    g.addColorStop(1.00, "#c9962a");
+    c.fillStyle = g;
+    c.fillRect(0, 0, W, H);
+    // 3) 顶部再来一条冷高光（金属反射）
+    const g2 = c.createLinearGradient(0, H / 2 - this.L.size * .55, 0, H / 2 - this.L.size * .15);
+    g2.addColorStop(0, "rgba(255,255,255,.55)");
+    g2.addColorStop(1, "rgba(255,255,255,0)");
+    c.fillStyle = g2; c.fillRect(0, 0, W, H);
+    c.globalCompositeOperation = "source-over";
+    this.goldCanvas = off;
+  }
+  update(dt) {
+    this.stepParticles(dt);
+    // 补充火星
+    if (this.parts.length < this.edgePts.length * PARTICLE_SCALE * .5 && Math.random() < .5) {
+      const e = this.edgePts[(Math.random() * this.edgePts.length) | 0];
+      this.parts.push(this.newSpark(e));
+    }
+  }
+  draw() {
+    const ctx = this.ctx, { W, H } = this, t = this.t;
+    ctx.clearRect(0, 0, W, H);
+    // 背景：一层暖色氛围光
+    const bg = ctx.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, Math.max(W, H) * .55);
+    bg.addColorStop(0, "rgba(90,66,20,.28)");
+    bg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    // 入场（0 ~ .55 秒）：从扁到正 + 轻微超出
+    const inT = clamp01(t / .55);
+    const eIn = Ease.outElastic(inT);
+    const sy = lerp(.12, 1, eIn), sx = lerp(1.14, 1, Ease.outCubic(inT));
+    const oIn = clamp01(t / .22);
+
+    ctx.save();
+    ctx.globalAlpha = oIn;
+    ctx.translate(W / 2, H / 2);
+    ctx.scale(sx, sy);
+    ctx.translate(-W / 2, -H / 2);
+
+    // ① 外发光（叠加混合，用金色画两次不同半径 —— 廉价但极像 bloom）
+    ctx.globalCompositeOperation = "lighter";
+    const pulse = .55 + Math.sin(t * 2.2) * .12;
+    ctx.globalAlpha = oIn * pulse * .30;
+    ctx.drawImage(this.goldCanvas, 0, 0, W, H);       // 底
+    ctx.filter = "none";
+    // 用缩放实现"模糊发光"：把图放大约 1.03 倍画几次
+    ctx.globalAlpha = oIn * pulse * .22;
+    ctx.drawImage(this.goldCanvas, -W * .008, -H * .012, W * 1.016, H * 1.024);
+    ctx.globalAlpha = oIn * pulse * .16;
+    ctx.drawImage(this.goldCanvas, -W * .018, -H * .026, W * 1.036, H * 1.052);
+    ctx.globalCompositeOperation = "source-over";
+
+    // ② 字本身
+    ctx.globalAlpha = oIn;
+    ctx.drawImage(this.goldCanvas, 0, 0, W, H);
+
+    // ③ 高光横扫（用 destination-in 做一个移动的遮罩层）
+    const sweepDur = .95, sweepStart = .45;
+    const st = clamp01((t - sweepStart) / sweepDur);
+    if (st > 0 && st < 1) {
+      const x = lerp(-W * .35, W * 1.35, Ease.inOutCubic(st));
+      const band = W * .16;
+      const g = ctx.createLinearGradient(x - band, 0, x + band, 0);
+      g.addColorStop(0, "rgba(255,255,255,0)");
+      g.addColorStop(.45, "rgba(255,255,255,.10)");
+      g.addColorStop(.5, "rgba(255,255,255,.95)");
+      g.addColorStop(.55, "rgba(255,255,255,.10)");
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = oIn * Math.sin(st * Math.PI) * .95;
+      ctx.fillStyle = g;
+      ctx.save();
+      // 只画在字形范围内
+      ctx.beginPath();
+      this.strokePath(ctx);
+      ctx.clip("nonzero");
+      ctx.fillRect(x - band, 0, band * 2, H);
+      ctx.restore();
+      ctx.globalCompositeOperation = "source-over";
+    }
+    ctx.restore();
+
+    // ④ 火星
+    ctx.globalCompositeOperation = "lighter";
+    for (const p of this.parts) {
+      const k = clamp01(p.life / p.max);
+      const a = Math.sin(k * Math.PI) * .9;
+      if (a <= 0) continue;
+      this.glowDot(p.x, p.y, p.r * (1 - k * .4) * 4, p.c, a * .5);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = "#fff8d0";
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (1 - k * .5) * .5, 0, 6.2832); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+  }
+  // 把字形的轮廓做成一条路径（用于 clip）
+  strokePath(ctx) {
+    const { W, H } = this, step = this.L.step, pts = this.L.pts;
+    ctx.save();
+    for (let i = 0; i < pts.length; i += 2) {
+      ctx.rect(pts[i] - step * .6, pts[i + 1] - step * .6, step * 1.2, step * 1.2);
+    }
+    ctx.restore();
+  }
+}
+
+// ================================================================
+//  ② 烈焰 · 灼烧：字形本身在燃烧，火焰从字的下沿卷上来
+//     手法：粒子从字形边缘发射 → 受浮力上升 + 湍流 → 颜色按寿命从白→黄→橙→暗红
+// ================================================================
+class FxFire extends Effect {
+  textOpt() { return { weight: "900", spacing: 2 }; }
+  init() {
+    this.L = this.layout;
+    this.pts = this.L.pts;
+    // 底部边缘点（y 较大的一半）
+    this.bottom = [];
+    for (let i = 0; i < this.pts.length; i += 2) {
+      const x = this.pts[i], y = this.pts[i + 1];
+      // 下沿：下面没有点
+      const below = this.hasPt(x, y + this.L.step);
+      if (!below) this.bottom.push([x, y]);
+    }
+    this.heat = 0;
+  }
+  hasPt(x, y) {
+    const s = new Set(this.setCache || (this.setCache = (() => {
+      const st = new Set(); const p = this.pts, stp = this.L.step;
+      for (let i = 0; i < p.length; i += 2) st.add(p[i] + "," + p[i + 1]);
+      return st;
+    })()));
+    return s.has(x + "," + y);
+  }
+  emit() {
+    const n = Math.round(rand(2, 5) * PARTICLE_SCALE * (IS_MOBILE ? .6 : 1));
+    for (let i = 0; i < n; i++) {
+      const e = this.bottom[(Math.random() * this.bottom.length) | 0];
+      if (!e) break;
+      this.parts.push({
+        x: e[0] + rand(-8, 8), y: e[1] + rand(-4, 6),
+        vx: rand(-.35, .35), vy: rand(-1.6, -.5),
+        life: 0, max: rand(.55, 1.35), r: rand(5, 15),
+        g: -0.008, drag: .955, turb: .02, seed: Math.random() * 9,
+      });
+    }
+  }
+  update(dt) {
+    this.heat = Math.min(1, this.heat + dt * 2.2);
+    this.emitTimer = (this.emitTimer || 0) + dt;
+    while (this.emitTimer > .016) { this.emitTimer -= .016; this.emit(); }
+    this.stepParticles(dt);
+  }
+  draw() {
+    const ctx = this.ctx, { W, H } = this, t = this.t;
+    ctx.clearRect(0, 0, W, H);
+    ctx.globalCompositeOperation = "lighter";
+
+    // 背景：底部火光
+    const bg = ctx.createRadialGradient(W / 2, H * .68, 10, W / 2, H * .68, Math.max(W, H) * .6);
+    bg.addColorStop(0, "rgba(120,40,0,.30)");
+    bg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.globalAlpha = 1; ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    // 底部一条热浪
+    const hg = ctx.createLinearGradient(0, H * .62, 0, H * .8);
+    hg.addColorStop(0, "rgba(255,120,0,0)");
+    hg.addColorStop(.5, "rgba(255,90,0,.22)");
+    hg.addColorStop(1, "rgba(255,60,0,0)");
+    ctx.fillStyle = hg;
+    ctx.fillRect(W * .06, H * .62, W * .88, H * .18);
+
+    // 火焰粒子：白心 → 黄 → 橙 → 暗红
+    for (const p of this.parts) {
+      const k = clamp01(p.life / p.max);
+      const a = (1 - k) * (1 - k) * .85;
+      if (a <= .01) continue;
+      let col;
+      if (k < .18) col = "rgba(255,255,235,1)";
+      else if (k < .40) col = "rgba(255,214,102,1)";
+      else if (k < .68) col = "rgba(255,122,26,1)";
+      else col = "rgba(170,32,0,1)";
+      const r = p.r * (1 + k * .8);
+      this.glowDot(p.x, p.y, r * 1.5, col, a * .55);
+      ctx.globalAlpha = a * .8;
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r * .35, 0, 6.2832); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // 字：被火烤热的金属感（暗底 + 灼热边缘）
+    const inT = clamp01(t / .5);
+    const o = Ease.outCubic(inT);
+    const float = Math.sin(t * 1.6) * 3;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.translate(0, float);
+    // 阴影层（暗）
+    ctx.globalAlpha = o;
+    ctx.drawImage(this.tint("#1a0a06"), 0, 0, W, H);
+    // 灼热层（偏橙，往上偏移一点点，像被火烤透）
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = o * (.55 + this.heat * .45);
+    ctx.drawImage(this.tintGradient(), 0, -2, W, H);
+    // 白热内芯
+    ctx.globalAlpha = o * .75 * this.heat;
+    ctx.drawImage(this.layout.canvas, 0, 0, W, H);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+
+    // 顶部漂浮的余烬
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < 3; i++) {
+      if (Math.random() < .4) {
+        const x = rand(0, W), y = rand(0, H);
+        this.glowDot(x, y, rand(2, 5), "rgba(255,180,60,1)", rand(.15, .5) * this.heat);
+      }
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+  // 生成"整块染色"的字形画布
+  tint(color) {
+    const key = "t" + color;
+    if (this[key]) return this[key];
+    const { W, H } = this;
+    const off = document.createElement("canvas"); off.width = W * DPR; off.height = H * DPR;
+    const c = off.getContext("2d"); c.setTransform(DPR, 0, 0, DPR, 0, 0);
+    c.drawImage(this.layout.canvas, 0, 0, W, H);
+    c.globalCompositeOperation = "source-in";
+    c.fillStyle = color; c.fillRect(0, 0, W, H);
+    this[key] = off; return off;
+  }
+  tintGradient() {
+    if (this._tg) return this._tg;
+    const { W, H } = this;
+    const off = document.createElement("canvas"); off.width = W * DPR; off.height = H * DPR;
+    const c = off.getContext("2d"); c.setTransform(DPR, 0, 0, DPR, 0, 0);
+    c.drawImage(this.layout.canvas, 0, 0, W, H);
+    c.globalCompositeOperation = "source-in";
+    const g = c.createLinearGradient(0, H / 2 + this.L.size * .5, 0, H / 2 - this.L.size * .5);
+    g.addColorStop(0, "#ff6a00");
+    g.addColorStop(.4, "#ffa63c");
+    g.addColorStop(1, "#ffe9b0");
+    c.fillStyle = g; c.fillRect(0, 0, W, H);
+    // 加一点"烧穿"的噪点
+    c.globalCompositeOperation = "destination-out";
+    for (let i = 0; i < 300; i++) {
+      c.globalAlpha = rand(.05, .35);
+      c.beginPath(); c.arc(rand(0, W), rand(H / 2 - this.L.size * .5, H / 2 + this.L.size * .5), rand(1, 4), 0, 6.2832); c.fill();
+    }
+    this._tg = off; return off;
+  }
+}
+
+// ================================================================
+//  ③ 灵光 · 汇聚：万千光点从虚空聚成字，凝住一瞬，再被吸回虚空
+//     手法：粒子从屏幕外沿曲线飞入 → 到位后做"呼吸"抖动 → 最后被中心吸走
+// ================================================================
+class FxSwarm extends Effect {
+  textOpt() { return { weight: "900", spacing: 3, step: 4 }; }
+  init() {
+    this.L = this.layout;
+    const pts = this.L.pts;
+    const total = Math.min(pts.length / 2, Math.round(BASE_PARTICLES * 12 * PARTICLE_SCALE));
+    const stride = Math.max(2, Math.floor((pts.length / 2) / total) * 2);
+    this.parts = [];
+    for (let i = 0; i < pts.length; i += stride) {
+      const tx = pts[i], ty = pts[i + 1];
+      const a = Math.atan2(ty - this.H / 2, tx - this.W / 2) + rand(-.6, .6);
+      const d = rand(260, 900);
+      this.parts.push({
+        tx, ty,
+        x: tx + Math.cos(a) * d, y: ty + Math.sin(a) * d,
+        vx: 0, vy: 0,
+        delay: rand(0, .42),
+        c: Math.random() < .55 ? "rgba(180,255,235,1)"
+          : (Math.random() < .5 ? "rgba(255,226,150,1)" : "rgba(255,255,255,1)"),
+        seed: Math.random() * 9, r: rand(1.1, 2.6),
+      });
+    }
+    this.ph = { in: 1.25, hold: .85, out: .85 };
+  }
+  update(dt) {
+    const P = this.ph;
+    // 用"进度插值"计算每个粒子（比累加更稳，不会漂移）
+    for (const p of this.parts) {
+      const local = clamp01((this.t - p.delay) / P.in);
+      if (local <= 0) continue;
+      if (p._sx === undefined) { p._sx = p.x; p._sy = p.y; }
+      const e = Ease.outQuart(local);
+      const baseX = lerp(p._sx, p.tx, e), baseY = lerp(p._sy, p.ty, e);
+      // 凝住时的呼吸
+      const t2 = Math.max(0, this.t - p.delay - P.in);
+      const br = Math.sin(t2 * 3.1 + p.seed) * 1.3 * Math.min(1, t2 * 2);
+      // 散场
+      const outT = clamp01((this.t - P.in - P.hold) / P.out);
+      if (outT > 0) {
+        const a = Math.atan2(p.ty - this.H / 2, p.tx - this.W / 2);
+        const dd = Ease.outCubic(outT) * (400 + p.seed * 30);
+        p.x = baseX + Math.cos(a) * dd;
+        p.y = baseY + Math.sin(a) * dd;
+      } else {
+        p.x = baseX + br; p.y = baseY + br * .6;
+      }
+    }
+  }
+  draw() {
+    const ctx = this.ctx, { W, H } = this, t = this.t;
+    ctx.clearRect(0, 0, W, H);
+    ctx.globalCompositeOperation = "lighter";
+    const bg = ctx.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, Math.max(W, H) * .5);
+    bg.addColorStop(0, "rgba(30,90,80,.22)");
+    bg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    const holdK = clamp01((t - this.ph.in) / this.ph.hold);
+    const outK = clamp01((t - this.ph.in - this.ph.hold) / this.ph.out);
+    for (const p of this.parts) {
+      const local = clamp01((t - p.delay) / this.ph.in);
+      if (local <= 0) continue;
+      let a = Math.min(1, local * 2.2) * (1 - outK);
+      ctx.globalAlpha = a * .55;
+      this.glowDot(p.x, p.y, p.r * 5, p.c, a * .5);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * .55, 0, 6.2832); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // 汇聚完成时来一圈冲击波
+    const shockT = clamp01((t - this.ph.in * .92) / .5);
+    if (shockT > 0 && shockT < 1) {
+      const k = Ease.outCubic(shockT);
+      ctx.globalAlpha = (1 - k) * .5;
+      ctx.strokeStyle = "rgba(180,255,235,1)";
+      ctx.lineWidth = lerp(6, 1, k);
+      ctx.beginPath();
+      ctx.ellipse(W / 2, H / 2, lerp(60, W * .52, k), lerp(30, H * .40, k), 0, 0, 6.2832);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+  }
+}
+
+// ================================================================
+//  ④ 血刃 · 斩击：一道刀气从右上劈到左下，字被切成两半错开再归位
+//     手法：字形复制成上下两半 → 位移/旋转错开 → 回位；刀气用拉长的渐变
+// ================================================================
+class FxSlash extends Effect {
+  textOpt() { return { weight: "900", spacing: 2 }; }
+  init() {
+    this.L = this.layout;
+    const { W, H } = this;
+    this.half = [[], []];
+    for (let i = 0; i < this.L.pts.length; i += 2) {
+      const x = this.L.pts[i], y = this.L.pts[i + 1];
+      this.half[y < H / 2 ? 0 : 1].push([x, y, rand(0, 1)]);
+    }
+    // 血珠
+    this.parts = [];
+    for (let i = 0; i < 70 * PARTICLE_SCALE; i++) this.parts.push(this.newDrop());
+  }
+  newDrop(fromSlash) {
+    const { W, H } = this;
+    return {
+      x: fromSlash ? rand(0, W) : rand(W * .2, W * .8),
+      y: fromSlash ? H / 2 + (rand(0, W) - W / 2) * -.28 : H * .5,
+      vx: rand(-.5, .5), vy: rand(.2, 1.6),
+      life: rand(-1.2, 0), max: rand(.7, 1.6), r: rand(1.6, 5),
+      g: .012, drag: .99, turb: .004, seed: Math.random() * 9,
+    };
+  }
+  update(dt) {
+    this.stepParticles(dt);
+    if (this.t > .35 && this.t < 1.1 && Math.random() < .6) this.parts.push(this.newDrop(true));
+  }
+  draw() {
+    const ctx = this.ctx, { W, H } = this, t = this.t;
+    ctx.clearRect(0, 0, W, H);
+
+    // 时间轴
+    const T_SLASH = .30;       // 刀气挥过
+    const T_SPLIT = .55;       // 错开最大
+    const T_BACK = 1.05;       // 回位
+    const slashK = clamp01(t / T_SLASH);
+    const splitK = t < T_SPLIT ? Ease.outCubic(t / T_SPLIT) : 1 - Ease.outCubic(clamp01((t - T_SPLIT) / (T_BACK - T_SPLIT)));
+
+    // 背景：暗红色氛围 + 一道斜向的暗影
+    const bg = ctx.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, Math.max(W, H) * .55);
+    bg.addColorStop(0, "rgba(80,10,16,.30)");
+    bg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    // 刀气（沿对角线的拉长光带）
+    if (slashK > 0 && slashK < 1) {
+      const k = Ease.inOutCubic(slashK);
+      const cx = lerp(-W * .35, W * 1.35, k), cy = lerp(-H * .35, H * 1.35, k);
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.translate(cx, cy); ctx.rotate(Math.atan2(H * 1.7, W * 1.7));
+      const len = Math.max(W, H) * 1.7;
+      const g = ctx.createLinearGradient(-len / 2, 0, len / 2, 0);
+      g.addColorStop(0, "rgba(255,255,255,0)");
+      g.addColorStop(.35, "rgba(255,220,220,.35)");
+      g.addColorStop(.5, "rgba(255,255,255,1)");
+      g.addColorStop(.65, "rgba(255,220,220,.35)");
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g;
+      const th = lerp(2, 9, Math.sin(slashK * Math.PI));
+      ctx.fillRect(-len / 2, -th / 2, len, th);
+      // 刀气的"锋"
+      ctx.globalAlpha = .6 * Math.sin(slashK * Math.PI);
+      ctx.fillRect(-30, -th * 2.4, 60, th * 4.8);
+      ctx.restore();
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
+    }
+
+    // 字（两半错开）
+    const o = clamp01(t / .12);
+    ctx.save();
+    ctx.globalAlpha = o;
+    const shake = t < .45 ? rand(-2.5, 2.5) : 0;
+    ctx.translate(shake, shake * .5);
+    for (let h = 0; h < 2; h++) {
+      const dir = h === 0 ? -1 : 1;
+      ctx.save();
+      const off = splitK * 26 * dir;
+      ctx.translate(off * .8, off * .35);
+      ctx.rotate(splitK * .018 * dir);
+      // 阴影
+      ctx.globalAlpha = o * .9;
+      ctx.drawImage(this.tint(h === 0 ? "#2a0a10" : "#3a0d14"), 0, 0, W, H);
+      ctx.globalCompositeOperation = "lighter";
+      const glow = ctx.createLinearGradient(0, h === 0 ? 0 : H / 2, 0, h === 0 ? H / 2 : H);
+      // 用染色层做金属红
+      ctx.globalAlpha = o;
+      ctx.drawImage(this.tintGrad(), 0, 0, W, H);
+      ctx.globalCompositeOperation = "source-over";
+      ctx.restore();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+
+    // 切口处的高光（沿斜线一条白线）
+    if (t > T_SLASH * .8 && splitK > .05) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = clamp01(splitK * 1.4) * .85 * (t < T_BACK ? 1 : clamp01((t - T_BACK) / .4));
+      ctx.translate(W / 2 + splitK * 20, H / 2 + splitK * 9);
+      ctx.rotate(Math.atan2(H * 1.7, W * 1.7));
+      const g = ctx.createLinearGradient(-W / 2, 0, W / 2, 0);
+      g.addColorStop(0, "rgba(255,120,120,0)");
+      g.addColorStop(.5, "rgba(255,240,240,1)");
+      g.addColorStop(1, "rgba(255,120,120,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(-W / 2, -2, W, 4);
+      ctx.restore();
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
+    }
+
+    // 血珠
+    ctx.globalCompositeOperation = "lighter";
+    for (const p of this.parts) {
+      const k = clamp01(p.life / p.max);
+      const a = Math.sin(k * Math.PI) * .95;
+      if (a <= 0) continue;
+      this.glowDot(p.x, p.y, p.r * 3.2, "rgba(200,20,40,1)", a * .55);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = "#8a0012";
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * .8, 0, 6.2832); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+
+    // 全屏白闪（劈中的瞬间）
+    const flashT = clamp01((t - T_SLASH * .92) / .18);
+    if (flashT > 0 && flashT < 1) {
+      ctx.globalAlpha = (1 - flashT) * .55;
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
+  }
+  tint(color) {
+    const key = "t" + color;
+    if (this[key]) return this[key];
+    const { W, H } = this;
+    const off = document.createElement("canvas"); off.width = W * DPR; off.height = H * DPR;
+    const c = off.getContext("2d"); c.setTransform(DPR, 0, 0, DPR, 0, 0);
+    c.drawImage(this.L.canvas, 0, 0, W, H);
+    c.globalCompositeOperation = "source-in";
+    c.fillStyle = color; c.fillRect(0, 0, W, H);
+    this[key] = off; return off;
+  }
+  tintGrad() {
+    if (this._g) return this._g;
+    const { W, H } = this;
+    const off = document.createElement("canvas"); off.width = W * DPR; off.height = H * DPR;
+    const c = off.getContext("2d"); c.setTransform(DPR, 0, 0, DPR, 0, 0);
+    c.drawImage(this.L.canvas, 0, 0, W, H);
+    c.globalCompositeOperation = "source-in";
+    const g = c.createLinearGradient(0, H / 2 - this.L.size * .5, 0, H / 2 + this.L.size * .5);
+    g.addColorStop(0, "#ffe0e0");
+    g.addColorStop(.35, "#e8e8f0");
+    g.addColorStop(.55, "#8a1020");
+    g.addColorStop(1, "#ff4a5a");
+    c.fillStyle = g; c.fillRect(0, 0, W, H);
+    this._g = off; return off;
+  }
+}
+
+// ================================================================
+//  ⑤ 腐蚀 · 滴落（毒）：字像被酸泡过，边缘冒泡、往下滴黏液
+// ================================================================
+class FxAcid extends Effect {
+  textOpt() { return { weight: "900", spacing: 2 }; }
+  init() {
+    this.L = this.layout;
+    this.bottom = [];
+    for (let i = 0; i < this.L.pts.length; i += 2) {
+      const x = this.L.pts[i], y = this.L.pts[i + 1];
+      const s = this.setOf();
+      if (!s.has(x + "," + (y + this.L.step))) this.bottom.push([x, y]);
+    }
+    this.parts = [];
+  }
+  setOf() {
+    if (!this._s) {
+      const s = new Set();
+      for (let i = 0; i < this.L.pts.length; i += 2) s.add(this.L.pts[i] + "," + this.L.pts[i + 1]);
+      this._s = s;
+    }
+    return this._s;
+  }
+  emit() {
+    const n = Math.round(rand(1, 3) * PARTICLE_SCALE);
+    for (let i = 0; i < n; i++) {
+      const e = this.bottom[(Math.random() * this.bottom.length) | 0];
+      if (!e) break;
+      this.parts.push({
+        x: e[0] + rand(-3, 3), y: e[1] + rand(0, 5),
+        vx: rand(-.12, .12), vy: rand(.05, .5),
+        life: 0, max: rand(1.0, 2.3), r: rand(2, 6.5),
+        g: .006, drag: .995, turb: .002, seed: Math.random() * 9,
+      });
+    }
+  }
+  update(dt) {
+    this.emitTimer = (this.emitTimer || 0) + dt;
+    while (this.emitTimer > .05) { this.emitTimer -= .05; this.emit(); }
+    this.stepParticles(dt);
+  }
+  draw() {
+    const ctx = this.ctx, { W, H } = this, t = this.t;
+    ctx.clearRect(0, 0, W, H);
+    // 背景：病态的绿雾
+    const bg = ctx.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, Math.max(W, H) * .55);
+    bg.addColorStop(0, "rgba(20,70,30,.30)");
+    bg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    // 字：从模糊里凝出来
+    const inT = clamp01(t / .9);
+    const e = Ease.outCubic(inT);
+    ctx.save();
+    ctx.globalAlpha = clamp01(t / .5);
+    // 用缩放叠画模拟"从模糊到清晰"
+    for (let i = 0; i < 5; i++) {
+      const k = i / 4;
+      const blur = (1 - e) * (1 - k) * 16 + k * 0;
+      ctx.globalAlpha = clamp01(t / .5) * ((1 - e) * .18 + (i === 4 ? 1 : 0));
+      ctx.drawImage(this.tintGrad(i), -blur * .5, -blur * .3, W + blur, H + blur * .6);
+    }
+    ctx.restore();
+
+    // 黏液（用叠加发光 + 主体两层）
+    ctx.globalCompositeOperation = "lighter";
+    for (const p of this.parts) {
+      const k = clamp01(p.life / p.max);
+      const a = Math.sin(Math.min(1, k * 2.2) * Math.PI * .5) * (1 - k) * .9;
+      if (a <= 0) continue;
+      this.glowDot(p.x, p.y, p.r * 3, "rgba(90,220,110,1)", a * .5);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = "rgba(140,255,150,.95)";
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * .7 * (1 + k * .6), 0, 6.2832); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+
+    // 表面的气泡（腐蚀感）
+    ctx.globalCompositeOperation = "lighter";
+    const bub = clamp01((t - .5) / 1.4);
+    if (bub > 0 && bub < 1) {
+      for (let i = 0; i < 30; i++) {
+        const seed = i * 12.9898;
+        const x = W / 2 + Math.sin(seed) * W * .42;
+        const y = H / 2 + Math.cos(seed * 1.7) * this.L.size * .45;
+        const k = ((t * .6 + i * .13) % 1);
+        const a = Math.sin(k * Math.PI) * .5 * (1 - bub);
+        if (a <= 0) continue;
+        this.glowDot(x, y, 6 + k * 14, "rgba(120,255,140,1)", a * .35);
+      }
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+  tintGrad(idx) {
+    if (this._g && this._g[idx]) return this._g[idx];
+    this._g = this._g || [];
+    const { W, H } = this;
+    const off = document.createElement("canvas"); off.width = W * DPR; off.height = H * DPR;
+    const c = off.getContext("2d"); c.setTransform(DPR, 0, 0, DPR, 0, 0);
+    c.drawImage(this.L.canvas, 0, 0, W, H);
+    c.globalCompositeOperation = "source-in";
+    const g = c.createLinearGradient(0, H / 2 - this.L.size * .55, 0, H / 2 + this.L.size * .55);
+    if (idx >= 3) {
+      g.addColorStop(0, "#d8ffd0");
+      g.addColorStop(.4, "#7ee88a");
+      g.addColorStop(.75, "#1f7a34");
+      g.addColorStop(1, "#0a3a18");
+    } else {
+      g.addColorStop(0, "#7fff90");
+      g.addColorStop(1, "#0d5a22");
+    }
+    c.fillStyle = g; c.fillRect(0, 0, W, H);
+    this._g[idx] = off; return off;
+  }
+}
+
+// ================================================================
+//  页面装配
+// ================================================================
+const LIST = [
+  { no: "01", nm: "鎏金 · 光扫", ds: "字是金箔压出来的：5 段金属渐变 + 冷高光 + 一道高光横扫 + 边缘火星。最清晰、手机最省。适合：通用 / 经济牌", fx: FxGold, text: "卡牌游戏" },
+  { no: "02", nm: "烈焰 · 灼烧", ds: "字形下沿持续发射火焰粒子：白心→黄→橙→暗红，带浮力和湍流；字面像被烤透的铁。适合：核弹 / 末日 / 焚烧", fx: FxFire, text: "核弹" },
+  { no: "03", nm: "灵光 · 汇聚", ds: "万千光点从虚空沿曲线聚成字，凝住一瞬、抖一下，再炸回虚空。最华丽。适合：黑洞 / 魔法 / 状态", fx: FxSwarm, text: "黑洞" },
+  { no: "04", nm: "血刃 · 斩击", ds: "刀气从右上劈到左下，字被切成两半错开、带血珠，再归位；劈中瞬间全屏白闪。适合：斩杀 / 狙击枪 / 血刃", fx: FxSlash, text: "斩杀" },
+  { no: "05", nm: "腐蚀 · 滴落", ds: "字从模糊里凝出来（多层叠画），边缘冒毒泡、往下滴黏液。适合：中毒 / 硫酸 / 腐肉 / 毒鸡汤", fx: FxAcid, text: "硫酸" },
+];
+
+const grid = document.getElementById("grid");
+const cells = [];
+let lastT = performance.now();
+let fpsAcc = 0, fpsN = 0, fpsT = 0;
+
+LIST.forEach((item, i) => {
+  const cell = document.createElement("div");
+  cell.className = "cell";
+  cell.innerHTML = `<div class="meta">
+      <div class="no">${item.no}</div>
+      <div class="nm">${item.nm}</div>
+      <div class="ds">${item.ds}</div>
+      <div class="perf"></div>
+    </div>
+    <button class="rp">重播</button>`;
+  grid.appendChild(cell);
+  cells.push({ cell, item, fx: null, perfEl: cell.querySelector(".perf") });
+
+  cell.querySelector(".rp").onclick = () => start(cells[i]);
+
+  // 自动循环（播完后停 1.1 秒再重播）
+  cells[i].loop = setInterval(() => start(cells[i]), 4600);
+});
+
+function start(c) {
+  if (c.fx) { c.fx.destroy(); c.fx = null; }
+  try {
+    const Cls = c.item.fx;
+    c.fx = new Cls(c.cell, c.item.text);
+    c.fx.__life = 0;
+  } catch (e) {
+    c.perfEl.textContent = "⚠️ 出错: " + e.message;
+    console.error(e);
+  }
+}
+
+// ---- 主循环（唯一的 RAF，全部效果共用）----
+function loop(now) {
+  let dt = (now - lastT) / 1000;
+  lastT = now;
+  if (dt > .1) dt = .1;             // 切标签页回来别跳帧
+  dt *= SPEED;
+
+  fpsAcc += dt / SPEED; fpsN++; fpsT += dt;
+  if (fpsT > .5) {
+    document.getElementById("fps").textContent = "FPS " + Math.round(fpsN / fpsAcc);
+    fpsAcc = 0; fpsN = 0; fpsT = 0;
+  }
+
+  for (const c of cells) {
+    const f = c.fx;
+    if (!f || f.dead) continue;
+    // 只在可视区内才更新（省性能）
+    const r = c.cell.getBoundingClientRect();
+    if (r.bottom < -100 || r.top > innerHeight + 100) continue;
+    const t0 = performance.now();
+    f.t += dt;
+    try { f.update(dt); f.draw(); } catch (e) { c.perfEl.textContent = "⚠️ " + e.message; }
+    const cost = performance.now() - t0;
+    c.perfEl.textContent = "粒子 " + (f.parts ? f.parts.length : 0) +
+      "　帧耗时 " + cost.toFixed(1) + "ms" + (cost > 10 ? "（偏高）" : "");
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ---- 控件 ----
+document.querySelectorAll(".spd").forEach((b) => {
+  b.onclick = () => {
+    document.querySelectorAll(".spd").forEach((x) => x.classList.remove("on"));
+    b.classList.add("on");
+    SPEED = Number(b.dataset.s);
+  };
+});
+const pc = document.getElementById("pcount"), pcLab = document.getElementById("pcountLab");
+pc.onchange = () => { cells.forEach((c, i) => setTimeout(() => start(c), i * 120)); };
+pc.oninput = () => {
+  PARTICLE_SCALE = Number(pc.value) / 100;
+  pcLab.textContent = pc.value + "%";
+};
+document.getElementById("btnAll").onclick = () => cells.forEach((c, i) => setTimeout(() => start(c), i * 180));
+
+// 窗口尺寸变化：重排
+let rt;
+addEventListener("resize", () => {
+  clearTimeout(rt);
+  rt = setTimeout(() => cells.forEach((c) => start(c)), 300);
+});
+
+// 首轮启动（错开）
+cells.forEach((c, i) => setTimeout(() => start(c), 350 + i * 320));
+</script>
+</body>
+</html>

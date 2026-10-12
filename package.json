@@ -1,0 +1,14 @@
+{
+  "name": "kanpai-card-game",
+  "version": "1.0.0",
+  "description": "双人卡牌对战 · 服务器权威 · 零第三方依赖",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "private": true,
+  "license": "MIT"
+}

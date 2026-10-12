@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>卡牌名字动画 · 方案挑选</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; padding:0; background:#0d0d12; color:#e8e8ec;
+         font-family:"Microsoft YaHei","PingFang SC",sans-serif; overflow-x:hidden; }
+  .head { padding:16px 20px; border-bottom:1px solid #26262f; background:#14141b;
+          position:sticky; top:0; z-index:100; }
+  .head h1 { margin:0 0 6px; font-size:20px; color:#fd6; }
+  .head p { margin:0; font-size:13px; color:#999; line-height:1.6; }
+  .bar { padding:10px 20px; background:#17171f; border-bottom:1px solid #26262f;
+         display:flex; gap:8px; flex-wrap:wrap; align-items:center; position:sticky; top:78px; z-index:99; }
+  .bar button { background:#2a2a36; color:#ddd; border:1px solid #44445a; padding:7px 14px;
+                border-radius:5px; cursor:pointer; font-size:13px; }
+  .bar button:hover { background:#3a3a4a; }
+  .bar button.on { background:#2d6cdf; border-color:#4a8aff; color:#fff; }
+  .stage { position:relative; min-height:520px; overflow:hidden; }
+  /* 每一格：一块"黑幕"，动画在里面播 */
+  .cell { position:relative; height:520px; display:flex; align-items:center; justify-content:center;
+          border-bottom:1px solid #1e1e28; overflow:hidden; }
+  .cell .hint { position:absolute; left:14px; top:10px; font-size:12px; color:#666; z-index:5; }
+  .cell .num { position:absolute; left:14px; top:10px; font-size:13px; color:#fd6;
+               font-weight:bold; z-index:5; }
+  .cell .desc { position:absolute; left:14px; top:30px; font-size:12px; color:#888; z-index:5; max-width:60%; line-height:1.5; }
+  .cell .replay { position:absolute; right:14px; bottom:12px; z-index:5;
+                  background:#2a2a36; color:#ccc; border:1px solid #44445a; padding:5px 12px;
+                  border-radius:4px; cursor:pointer; font-size:12px; }
+  .cell .replay:hover { background:#3a3a4a; }
+  svg, canvas { display:block; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>🎴 卡牌名字动画 · 方案挑选</h1>
+  <p>下面 8 种是"打出一张牌时，牌名怎么出现"的不同做法。每个都会自动循环播放，也能手动重播。<br>
+     看中哪个告诉我编号，我就把它实装到游戏里（按牌的属性自动套用，比如火系用灼烧、斩杀用刀光）。</p>
+</div>
+
+<div class="bar">
+  <span style="font-size:13px;color:#888">全局速度：</span>
+  <button class="spd" data-s="1.4">慢</button>
+  <button class="spd on" data-s="1">正常</button>
+  <button class="spd" data-s="0.6">快</button>
+  <span style="width:20px"></span>
+  <span style="font-size:13px;color:#888">同时播放：</span>
+  <button id="btnAll">全部重播一遍</button>
+  <span style="font-size:12px;color:#666">（往下滚看全部 8 种）</span>
+</div>
+
+<div class="stage" id="stage"></div>
+
+<script>
+// ============================================================
+// 8 种「卡牌名字出现」的做法
+//   每种都是一个函数：play(root, text, speed) —— 在 root 里播一次动画
+//   全部纯 SVG / CSS / Canvas，没有外部素材
+// ============================================================
+const W = 700, H = 520;
+let GLOBAL_SPEED = 1;
+const running = [];     // 正在播的定时器，重播前先清掉
+
+function clearTimers() {
+  for (const t of running.splice(0)) { clearTimeout(t); }
+}
+function later(fn, ms) { const t = setTimeout(fn, ms / GLOBAL_SPEED); running.push(t); return t; }
+
+// ---------- 通用：做一个居中的 SVG 舞台 ----------
+function svgStage(root, w, h) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", "100%");
+  svg.style.position = "absolute"; svg.style.inset = "0";
+  root.appendChild(svg);
+  return svg;
+}
+function el(tag, attrs, parent) {
+  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function textEl(svg, str, size, attrs) {
+  const t = el("text", Object.assign({
+    x: W / 2, y: H / 2, "text-anchor": "middle", "dominant-baseline": "middle",
+    "font-size": size, "font-family": "Microsoft YaHei, PingFang SC, sans-serif",
+    "font-weight": "bold",
+  }, attrs || {}), svg);
+  t.textContent = str;
+  return t;
+}
+
+// ============================================================
+// ① 火焰灼烧：字从火里烧出来，边缘有火苗和火星往上飘
+// ============================================================
+function fxFire(root, name) {
+  const svg = svgStage(root, W, H);
+  const defs = el("defs", {}, svg);
+  const grad = el("linearGradient", { id: "g-fire", x1: "0", y1: "1", x2: "0", y2: "0" }, defs);
+  el("stop", { offset: "0%", "stop-color": "#7a1500" }, grad);
+  el("stop", { offset: "45%", "stop-color": "#ff5a00" }, grad);
+  el("stop", { offset: "100%", "stop-color": "#ffe066" }, grad);
+  const glow = el("filter", { id: "f-fire", x: "-50%", y: "-50%", width: "200%", height: "200%" }, defs);
+  el("feGaussianBlur", { stdDeviation: "10", result: "b" }, glow);
+  el("feMerge", {}, glow).appendChild(el("feMergeNode", { in: "b" }, glow));
+
+  // 底部火光
+  const base = el("ellipse", { cx: W / 2, cy: H / 2 + 80, rx: 20, ry: 6, fill: "#ff6a00", opacity: "0" }, svg);
+  base.style.filter = "blur(6px)";
+
+  const t = textEl(svg, name, 92, { fill: "url(#g-fire)", opacity: "0", filter: "url(#f-fire)" });
+
+  // 火星
+  const sparks = [];
+  for (let i = 0; i < 28; i++) {
+    const s = el("circle", { r: 1 + Math.random() * 3, fill: Math.random() < .5 ? "#ffd166" : "#ff6b35", opacity: "0" }, svg);
+    sparks.push(s);
+  }
+
+  // 动画：字从下方升起 + 变大 + 亮起
+  t.animate([
+    { opacity: 0, transform: "translateY(26px) scale(.86)" },
+    { opacity: 1, transform: "translateY(0) scale(1.04)", offset: .35 },
+    { opacity: 1, transform: "translateY(-2px) scale(1)", offset: .7 },
+    { opacity: .92, transform: "translateY(-4px) scale(1)" },
+  ], { duration: 2200 / GLOBAL_SPEED, fill: "forwards", easing: "cubic-bezier(.2,.9,.2,1)" });
+  base.animate([{ opacity: 0, rx: 20 }, { opacity: .9, rx: 150, offset: .3 }, { opacity: .5, rx: 190 }],
+    { duration: 2200 / GLOBAL_SPEED, fill: "forwards" });
+
+  sparks.forEach((s, i) => {
+    const x = W / 2 + (Math.random() - .5) * 420;
+    const y = H / 2 + 40 + Math.random() * 20;
+    const dur = (900 + Math.random() * 1400);
+    s.setAttribute("cx", x); s.setAttribute("cy", y);
+    later(() => {
+      s.animate([
+        { opacity: 0, transform: "translate(0,0) scale(.5)" },
+        { opacity: 1, transform: `translate(${(Math.random() - .5) * 60}px, -${40 + Math.random() * 90}px) scale(1)`, offset: .4 },
+        { opacity: 0, transform: `translate(${(Math.random() - .5) * 120}px, -${140 + Math.random() * 160}px) scale(.3)` },
+      ], { duration: dur / GLOBAL_SPEED, easing: "ease-out" });
+    }, i * 60);
+  });
+}
+
+// ============================================================
+// ② 金属流光：镀金字，一道高光横扫过去
+// ============================================================
+function fxGold(root, name) {
+  const svg = svgStage(root, W, H);
+  const defs = el("defs", {}, svg);
+  const g1 = el("linearGradient", { id: "g-gold", x1: "0", y1: "0", x2: "0", y2: "1" }, defs);
+  el("stop", { offset: "0%", "stop-color": "#fff3b0" }, g1);
+  el("stop", { offset: "35%", "stop-color": "#f5c542" }, g1);
+  el("stop", { offset: "55%", "stop-color": "#8a5a10" }, g1);
+  el("stop", { offset: "100%", "stop-color": "#ffe98a" }, g1);
+  const shine = el("linearGradient", { id: "g-shine", x1: "0", y1: "0", x2: "1", y2: "0" }, defs);
+  el("stop", { offset: "40%", "stop-color": "#fff", "stop-opacity": "0" }, shine);
+  el("stop", { offset: "50%", "stop-color": "#fff", "stop-opacity": "1" }, shine);
+  el("stop", { offset: "60%", "stop-color": "#fff", "stop-opacity": "0" }, shine);
+  const mask = el("mask", { id: "m-shine" }, defs);
+  el("rect", { x: "-400", y: "0", width: "400", height: H, fill: "url(#g-shine)" }, mask).id = "shineRect";
+  const gTxt = el("g", {}, svg);
+  const t = textEl(gTxt, name, 96, { fill: "url(#g-gold)", stroke: "#3a2408", "stroke-width": "2" });
+
+  // 入场：从扁到正常（像印章压下来）
+  gTxt.animate([
+    { opacity: 0, transform: "scaleY(.2) scaleX(1.2)" },
+    { opacity: 1, transform: "scaleY(1.06) scaleX(1)", offset: .3 },
+    { opacity: 1, transform: "scaleY(1) scaleX(1)" },
+  ], { duration: 700 / GLOBAL_SPEED, fill: "forwards", easing: "cubic-bezier(.2,1.4,.4,1)" });
+
+  // 高光横扫
+  const r = svg.querySelector("#shineRect");
+  if (r) {
+    r.animate([{ transform: "translateX(0)" }, { transform: `translateX(${W + 500}px)` }],
+      { duration: 1200 / GLOBAL_SPEED, delay: 500 / GLOBAL_SPEED, fill: "forwards", easing: "ease-in-out" });
+  }
+  // 外发光脉冲
+  later(() => {
+    const glow = textEl(svg, name, 96, { fill: "none", stroke: "#ffe98a", "stroke-width": "1", opacity: "0" });
+    glow.style.filter = "blur(6px)";
+    glow.animate([{ opacity: 0 }, { opacity: .9, offset: .3 }, { opacity: 0 }],
+      { duration: 900 / GLOBAL_SPEED, fill: "forwards" });
+  }, 600);
+}
+
+// ============================================================
+// ③ 刀光斩击：一道白光斜劈，字被"切"出来
+// ============================================================
+function fxSlash(root, name) {
+  const svg = svgStage(root, W, H);
+  // 字先隐藏
+  const t = textEl(svg, name, 96, { fill: "#fff", opacity: "0" });
+  // 两半（用 clipPath 切开）
+  const defs = el("defs", {}, svg);
+  const top = el("clipPath", { id: "c-top" }, defs);
+  el("rect", { x: "0", y: "0", width: W, height: H / 2 }, top);
+  const bot = el("clipPath", { id: "c-bot" }, defs);
+  el("rect", { x: "0", y: H / 2, width: W, height: H / 2 }, bot);
+
+  const t1 = textEl(svg, name, 96, { fill: "#fff", "clip-path": "url(#c-top)" });
+  const t2 = textEl(svg, name, 96, { fill: "#fff", "clip-path": "url(#c-bot)" });
+  t1.animate([{ transform: "translateX(-40px)", opacity: 0 }, { transform: "translateX(0)", opacity: 1 }],
+    { duration: 620 / GLOBAL_SPEED, delay: 120 / GLOBAL_SPEED, fill: "forwards", easing: "cubic-bezier(.2,.9,.2,1)" });
+  t2.animate([{ transform: "translateX(40px)", opacity: 0 }, { transform: "translateX(0)", opacity: 1 }],
+    { duration: 620 / GLOBAL_SPEED, delay: 120 / GLOBAL_SPEED, fill: "forwards", easing: "cubic-bezier(.2,.9,.2,1)" });
+
+  // 刀光（斜线）
+  const slash = el("rect", { x: "-600", y: H / 2 - 3, width: "700", height: "6",
+    fill: "#fff", opacity: "0" }, svg);
+  slash.style.filter = "blur(2px) drop-shadow(0 0 14px #fff)";
+  slash.animate([
+    { opacity: 0, transform: "translateX(0) rotate(-14deg)" },
+    { opacity: 1, transform: "translateX(200px) rotate(-14deg)", offset: .18 },
+    { opacity: 1, transform: `translateX(${W + 300}px) rotate(-14deg)`, offset: .6 },
+    { opacity: 0, transform: `translateX(${W + 500}px) rotate(-14deg)` },
+  ], { duration: 620 / GLOBAL_SPEED, fill: "forwards", easing: "ease-in" });
+
+  // 白闪
+  const fl = el("rect", { x: "0", y: "0", width: W, height: H, fill: "#fff", opacity: "0" }, svg);
+  fl.animate([{ opacity: 0 }, { opacity: .75, offset: .12 }, { opacity: 0 }],
+    { duration: 420 / GLOBAL_SPEED, delay: 220 / GLOBAL_SPEED, fill: "forwards" });
+
+  // 字最后发光
+  later(() => {
+    t.setAttribute("opacity", "0");
+    t1.animate([{ filter: "drop-shadow(0 0 0 #fff)" }, { filter: "drop-shadow(0 0 22px #bfe4ff)" }],
+      { duration: 500 / GLOBAL_SPEED, fill: "forwards" });
+  }, 400);
+}
+
+// ============================================================
+// ④ 粒子汇聚：光点从四周飞来聚成字，再炸开
+// ============================================================
+function fxParticles(root, name) {
+  const cv = document.createElement("canvas");
+  cv.width = W; cv.height = H;
+  cv.style.position = "absolute"; cv.style.inset = "0"; cv.style.width = "100%"; cv.style.height = "100%";
+  root.appendChild(cv);
+  const ctx = cv.getContext("2d");
+
+  // 采样：先用离屏画布把字画出来，再取像素点
+  const off = document.createElement("canvas");
+  off.width = W; off.height = H;
+  const octx = off.getContext("2d");
+  octx.fillStyle = "#fff";
+  octx.font = "bold 96px Microsoft YaHei, PingFang SC, sans-serif";
+  octx.textAlign = "center"; octx.textBaseline = "middle";
+  octx.fillText(name, W / 2, H / 2);
+  const img = octx.getImageData(0, 0, W, H).data;
+  const targets = [];
+  for (let y = 0; y < H; y += 4) {
+    for (let x = 0; x < W; x += 4) {
+      if (img[(y * W + x) * 4 + 3] > 128) targets.push({ x, y });
+    }
+  }
+
+  const ps = targets.map((t) => {
+    const a = Math.random() * Math.PI * 2, d = 320 + Math.random() * 320;
+    return { x: t.x + Math.cos(a) * d, y: t.y + Math.sin(a) * d, tx: t.x, ty: t.y,
+             c: Math.random() < .5 ? "#7fd" : (Math.random() < .5 ? "#ffd166" : "#fff") };
+  });
+
+  const DUR_IN = 1100 / GLOBAL_SPEED;
+  const HOLD = 900 / GLOBAL_SPEED;
+  const DUR_OUT = 700 / GLOBAL_SPEED;
+  const t0 = performance.now();
+  let raf;
+  function frame(now) {
+    const e = (now - t0);
+    ctx.clearRect(0, 0, W, H);
+    // 背景淡淡的光晕
+    const g = ctx.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, 300);
+    g.addColorStop(0, "rgba(120,255,220,.10)"); g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    let phase = "in", k = 0;
+    if (e < DUR_IN) { phase = "in"; k = e / DUR_IN; }
+    else if (e < DUR_IN + HOLD) { phase = "hold"; k = (e - DUR_IN) / HOLD; }
+    else if (e < DUR_IN + HOLD + DUR_OUT) { phase = "out"; k = (e - DUR_IN - HOLD) / DUR_OUT; }
+    else { phase = "done"; }
+
+    for (const p of ps) {
+      let x, y, alpha = 1;
+      if (phase === "in") {
+        const ease = 1 - Math.pow(1 - k, 3);
+        x = p.x + (p.tx - p.x) * ease;
+        y = p.y + (p.ty - p.y) * ease;
+        alpha = Math.min(1, k * 2);
+      } else if (phase === "hold") {
+        x = p.tx + Math.sin(k * 6 + p.tx * .1) * 1.2;
+        y = p.ty + Math.cos(k * 6 + p.ty * .1) * 1.2;
+        alpha = .78 + Math.sin(k * 10 + p.tx) * .2;
+      } else if (phase === "out") {
+        const a = Math.atan2(p.ty - H / 2, p.tx - W / 2) + (Math.random() - .5) * .5;
+        const d = k * (200 + Math.random() * 260);
+        x = p.tx + Math.cos(a) * d;
+        y = p.ty + Math.sin(a) * d;
+        alpha = 1 - k;
+      } else {
+        raf = null; return;
+      }
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = p.c;
+      const s = phase === "hold" ? 2.2 : 2.6;
+      ctx.fillRect(x - s / 2, y - s / 2, s, s);
+    }
+    ctx.globalAlpha = 1;
+    raf = requestAnimationFrame(frame);
+  }
+  raf = requestAnimationFrame(frame);
+  running.push({ unref: () => { } });
+  // 存起来方便重播时取消
+  root.__raf = raf;
+}
+
+// ============================================================
+// ⑤ 卡牌飞入拼接：几张牌飞过来，拼成字
+// ============================================================
+function fxCards(root, name) {
+  const svg = svgStage(root, W, H);
+  const chars = name.split("");
+  const perW = 110;
+  const startX = W / 2 - (chars.length - 1) * perW / 2;
+
+  chars.forEach((ch, i) => {
+    const g = el("g", {}, svg);
+    // 一张小牌
+    const card = el("rect", { x: -42, y: -58, width: 84, height: 116, rx: 8,
+      fill: "#241a33", stroke: "#c8a8f0", "stroke-width": "2.5" }, g);
+    const back = el("rect", { x: -34, y: -50, width: 68, height: 100, rx: 5,
+      fill: "none", stroke: "#5a3a8a", "stroke-width": "1" }, g);
+    const ch2 = el("text", { x: 0, y: 0, "text-anchor": "middle", "dominant-baseline": "middle",
+      "font-size": "52", "font-weight": "bold", fill: "#f0e0ff",
+      "font-family": "Microsoft YaHei, sans-serif" }, g);
+    ch2.textContent = ch;
+    // 牌先藏起来（翻面）
+    const rotY = el("animate", { attributeName: "opacity", from: "0", to: "0", dur: "0.01s", fill: "freeze" }, g);
+
+    g.setAttribute("transform", `translate(${W / 2 + (i - chars.length / 2) * 300}, ${H / 2 + 200}) rotate(${(Math.random() - .5) * 90})`);
+
+    // 飞入 + 翻面
+    later(() => {
+      g.animate([
+        { transform: `translate(${W / 2 + (i - chars.length / 2) * 300}px, ${H / 2 + 200}px) rotate(${(Math.random() - .5) * 80}deg) scale(.6)`, opacity: 0 },
+        { transform: `translate(${startX + i * perW}px, ${H / 2}px) rotate(${(Math.random() - .5) * 8}deg) scale(1)`, opacity: 1 },
+      ], { duration: 620 / GLOBAL_SPEED, fill: "forwards", easing: "cubic-bezier(.2,1.1,.3,1)" });
+      // 落地时来一下小闪光
+      const fl = el("circle", { cx: startX + i * perW, cy: H / 2, r: 8, fill: "#e0c8ff", opacity: "0" }, svg);
+      fl.style.filter = "blur(4px)";
+      fl.animate([{ opacity: 1, r: 8 }, { opacity: 0, r: 90 }], { duration: 420 / GLOBAL_SPEED, fill: "forwards" });
+    }, i * 130);
+
+    // 最后牌淡出、只剩下字变大浮上来（模拟"拼成牌名"）
+    later(() => {
+      card.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300 / GLOBAL_SPEED, fill: "forwards" });
+      back.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300 / GLOBAL_SPEED, fill: "forwards" });
+      ch2.animate([
+        { "font-size": "52px", fill: "#f0e0ff" },
+        { "font-size": "92px", fill: "#fff" },
+      ], { duration: 420 / GLOBAL_SPEED, fill: "forwards", easing: "cubic-bezier(.2,1.3,.4,1)" });
+    }, i * 130 + 660);
+  });
+}
+
+// ============================================================
+// ⑥ 符文法阵：脚下转一个魔法阵，字从阵里升起
+// ============================================================
+function fxRune(root, name) {
+  const svg = svgStage(root, W, H);
+  const cx = W / 2, cy = H / 2 + 30;
+  const ring = el("g", {}, svg);
+  // 三层圆环
+  for (let i = 0; i < 3; i++) {
+    const r = 90 + i * 46;
+    el("circle", { cx, cy, r, fill: "none", stroke: i === 1 ? "#9a6aff" : "#5a3a9a",
+      "stroke-width": i === 1 ? "1.6" : "1", "stroke-dasharray": i === 1 ? "14 10" : "4 12", opacity: "0" }, ring);
+  }
+  // 符文小方块
+  const runes = [];
+  for (let i = 0; i < 20; i++) {
+    const a = (i / 20) * Math.PI * 2;
+    const r = 182;
+    const q = el("rect", { x: cx + Math.cos(a) * r - 3, y: cy + Math.sin(a) * r * 0.42 - 3,
+      width: 6, height: 6, fill: "#c8a8f0", opacity: "0" }, ring);
+    runes.push(q);
+  }
+  const t = textEl(svg, name, 88, { fill: "#fff", opacity: "0" });
+
+  ring.animate([{ opacity: 0, transform: "scale(.4)" }, { opacity: 1, transform: "scale(1)" }],
+    { duration: 620 / GLOBAL_SPEED, fill: "forwards", easing: "cubic-bezier(.2,1.2,.4,1)" });
+  // 持续旋转
+  ring.style.transformOrigin = `${cx}px ${cy}px`;
+  ring.animate([{ transform: "scale(1) rotate(0deg)" }, { transform: "scale(1) rotate(360deg)" }],
+    { duration: 9000 / GLOBAL_SPEED, iterations: 1, easing: "linear" });
+
+  // 符文依次亮起
+  runes.forEach((q, i) => later(() => {
+    q.animate([{ opacity: 0 }, { opacity: 1 }, { opacity: .3 }], { duration: 700 / GLOBAL_SPEED, fill: "forwards" });
+  }, i * 40));
+
+  // 从阵中升起的字
+  later(() => {
+    t.animate([
+      { opacity: 0, transform: "translateY(40px) scale(.8)" },
+      { opacity: 1, transform: "translateY(-6px) scale(1.06)", offset: .45 },
+      { opacity: 1, transform: "translateY(-10px) scale(1)" },
+    ], { duration: 900 / GLOBAL_SPEED, fill: "forwards", easing: "cubic-bezier(.2,1.1,.3,1)" });
+    // 上升的光柱
+    const beam = el("rect", { x: cx - 60, y: cy - 240, width: 120, height: 260,
+      fill: "url(#g-beam)", opacity: "0" }, svg);
+    const defs = el("defs", {}, svg);
+    const gb = el("linearGradient", { id: "g-beam", x1: "0", y1: "0", x2: "0", y2: "1" }, defs);
+    el("stop", { offset: "0%", "stop-color": "#c8a8f0", "stop-opacity": "0" }, gb);
+    el("stop", { offset: "100%", "stop-color": "#c8a8f0", "stop-opacity": ".5" }, gb);
+    beam.animate([{ opacity: 0 }, { opacity: .8, offset: .3 }, { opacity: 0 }],
+      { duration: 900 / GLOBAL_SPEED, fill: "forwards" });
+  }, 420);
+}
+
+// ============================================================
+// ⑦ 霓虹闪灯：像坏掉的霓虹招牌，一闪一闪最后亮起
+// ============================================================
+function fxNeon(root, name) {
+  const svg = svgStage(root, W, H);
+  const defs = el("defs", {}, svg);
+  const gl = el("filter", { id: "f-neon", x: "-40%", y: "-40%", width: "180%", height: "180%" }, defs);
+  el("feGaussianBlur", { stdDeviation: "7", result: "b" }, gl);
+  const mg = el("feMerge", {}, gl);
+  el("feMergeNode", { in: "b" }, mg); el("feMergeNode", { in: "b" }, mg);
+  el("feMergeNode", { in: "SourceGraphic" }, mg);
+
+  const t = textEl(svg, name, 96, { fill: "#fff", stroke: "#ff3df0", "stroke-width": "2", filter: "url(#f-neon)", opacity: "0" });
+  const t2 = textEl(svg, name, 96, { fill: "none", stroke: "#5ce1ff", "stroke-width": "1", opacity: "0" });
+  t2.style.filter = "blur(3px)";
+
+  // 闪烁序列
+  const seq = [1, 0, 1, 1, 0, 1, 0, 1, 1, 1];
+  let time = 0;
+  seq.forEach((on, i) => {
+    const d = 90 + Math.random() * 70;
+    later(() => {
+      t.style.opacity = on ? "1" : "0";
+      t2.style.opacity = on ? String(.5 + Math.random() * .5) : "0";
+    }, time);
+    time += d;
+  });
+  later(() => {
+    t.animate([{ opacity: 1 }, { opacity: .55 }, { opacity: 1 }],
+      { duration: 1400 / GLOBAL_SPEED, iterations: 1, fill: "forwards" });
+    t.setAttribute("opacity", "1"); t2.setAttribute("opacity", ".7");
+  }, time);
+}
+
+// ============================================================
+// ⑧ 墨迹/中毒感：一摊液体从字里渗出，字边缘被腐蚀
+// ============================================================
+function fxCorrode(root, name) {
+  const svg = svgStage(root, W, H);
+  const defs = el("defs", {}, svg);
+  const grad = el("linearGradient", { id: "g-cor", x1: "0", y1: "0", x2: "0", y2: "1" }, defs);
+  el("stop", { offset: "0%", "stop-color": "#b6ff7a" }, grad);
+  el("stop", { offset: "60%", "stop-color": "#4ad06a" }, grad);
+  el("stop", { offset: "100%", "stop-color": "#0d3a1a" }, grad);
+  const gl = el("filter", { id: "f-cor", x: "-40%", y: "-40%", width: "180%", height: "180%" }, defs);
+  el("feGaussianBlur", { stdDeviation: "4", result: "b" }, gl);
+  const mg = el("feMerge", {}, gl);
+  el("feMergeNode", { in: "b" }, mg); el("feMergeNode", { in: "SourceGraphic" }, mg);
+
+  const t = textEl(svg, name, 94, { fill: "url(#g-cor)", filter: "url(#f-cor)", opacity: "0" });
+
+  // 滴落
+  const drops = [];
+  for (let i = 0; i < 16; i++) {
+    const d = el("ellipse", { cx: W / 2 + (Math.random() - .5) * 380, cy: H / 2 + 44,
+      rx: 3 + Math.random() * 4, ry: 6 + Math.random() * 8, fill: "#4ad06a", opacity: "0" }, svg);
+    drops.push(d);
+  }
+
+  t.animate([
+    { opacity: 0, transform: "scale(1.3)", filter: "blur(14px)" },
+    { opacity: 1, transform: "scale(1)", filter: "blur(0px)", offset: .55 },
+    { opacity: 1, transform: "scale(1)" },
+  ], { duration: 1000 / GLOBAL_SPEED, fill: "forwards", easing: "ease-out" });
+
+  drops.forEach((d, i) => later(() => {
+    const dur = 700 + Math.random() * 900;
+    d.animate([
+      { opacity: 0, transform: "translateY(0) scaleY(.4)" },
+      { opacity: .95, transform: "translateY(6px) scaleY(1)", offset: .2 },
+      { opacity: 0, transform: `translateY(${70 + Math.random() * 150}px) scaleY(2.2)` },
+    ], { duration: dur / GLOBAL_SPEED, easing: "cubic-bezier(.4,0,.9,.4)" });
+  }, i * 70));
+
+  // 腐蚀缺口（几个小圆挖在字上——用暗色圆盖住一点）
+  for (let i = 0; i < 10; i++) {
+    later(() => {
+      const c = el("circle", { cx: W / 2 + (Math.random() - .5) * 400, cy: H / 2 + (Math.random() - .5) * 60,
+        r: 2 + Math.random() * 5, fill: "#0d0d12", opacity: "0" }, svg);
+      c.animate([{ opacity: 0 }, { opacity: .9, offset: .3 }, { opacity: .75 }],
+        { duration: 500 / GLOBAL_SPEED, fill: "forwards" });
+    }, 500 + i * 90);
+  }
+}
+
+// ============================================================
+// 搭建页面
+// ============================================================
+const FXS = [
+  { n: 1, name: "火焰灼烧", desc: "字从火里升起，边缘有火苗、火星往上飘。适合：火系、核弹、末日", fn: fxFire, demo: "核弹" },
+  { n: 2, name: "金属流光", desc: "镀金字 + 一道高光横扫 + 外发光脉冲。最经典、最清晰、手机上最省性能", fn: fxGold, demo: "卡牌游戏" },
+  { n: 3, name: "刀光斩击", desc: "一道白光斜劈，字被切成两半再合上。适合：斩杀、狙击枪、血刃", fn: fxSlash, demo: "斩杀" },
+  { n: 4, name: "粒子汇聚", desc: "光点从四周飞来聚成字，抖动一下再炸开。科技/魔法感，最华丽但手机要降质", fn: fxParticles, demo: "黑洞" },
+  { n: 5, name: "卡牌拼接", desc: "几张牌翻着飞过来拼成字。最贴合卡牌主题", fn: fxCards, demo: "末影龙" },
+  { n: 6, name: "符文法阵", desc: "脚下转一个魔法阵，符文依次亮起，字从阵里升起。适合：召唤、状态类", fn: fxRune, demo: "八音盒" },
+  { n: 7, name: "霓虹闪灯", desc: "像坏掉的霓虹招牌，闪几下最后亮起。适合：毒鸡汤、电系、搞怪牌", fn: fxNeon, demo: "毒鸡汤" },
+  { n: 8, name: "腐蚀滴落", desc: "字从模糊中凝出来，往下滴液体、边缘被腐蚀。适合：中毒、硫酸、腐肉", fn: fxCorrode, demo: "硫酸" },
+];
+
+const stage = document.getElementById("stage");
+const cells = [];
+
+FXS.forEach((f) => {
+  const cell = document.createElement("div");
+  cell.className = "cell";
+  cell.innerHTML = `<div class="num">${f.n}. ${f.name}</div>
+    <div class="desc">${f.desc}</div>
+    <button class="replay">重播</button>`;
+  stage.appendChild(cell);
+  const btn = cell.querySelector(".replay");
+  const timer = setInterval(() => play(cell, f), 4200);
+  function play(c, ff) {
+    // 清掉上一次
+    for (const el2 of Array.from(c.querySelectorAll("svg, canvas"))) el2.remove();
+    clearTimers();
+    ff.fn(c, ff.demo);
+  }
+  cells.push({ cell, f, play });
+  btn.onclick = () => play(cell, f);
+  // 首次播放（错开一点，别一起放）
+  setTimeout(() => play(cell, f), 400 + f.n * 260);
+});
+
+document.getElementById("btnAll").onclick = () => {
+  cells.forEach((c, i) => setTimeout(() => c.play(c.cell, c.f), i * 200));
+};
+
+document.querySelectorAll(".spd").forEach((b) => {
+  b.onclick = () => {
+    document.querySelectorAll(".spd").forEach((x) => x.classList.remove("on"));
+    b.classList.add("on");
+    GLOBAL_SPEED = Number(b.dataset.s);
+    cells.forEach((c) => c.play(c.cell, c.f));
+  };
+});
+
+// 手机：如果是低配，提示一下
+if (/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)) {
+  const tip = document.createElement("div");
+  tip.style.cssText = "padding:10px 20px;background:#2a1a1a;color:#faa;font-size:12px";
+  tip.textContent = "📱 手机上「粒子汇聚」可能会有点卡（那个是 Canvas 逐像素画），其它 7 种都很流畅。";
+  document.querySelector(".head").appendChild(tip);
+}
+</script>
+</body>
+</html>

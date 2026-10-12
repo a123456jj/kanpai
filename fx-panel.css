@@ -1,0 +1,285 @@
+/* ============================================================
+   面板特效样式（玩家框内的粒子效果）
+   用法：在框里放 <div class="p-fx p-状态"> ，
+        里面塞 <i class="p-par par-xxx"> 粒子
+   ============================================================ */
+
+.p-fx { position: absolute; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+.p-tag {
+  position: absolute; right: 8px; bottom: 8px; font-size: 12px; font-weight: bold;
+  color: #fff; padding: 3px 10px; border-radius: 12px; border: 1px solid;
+  pointer-events: none; z-index: 3;
+}
+.panel > h2, .panel > div:not(.p-fx):not(.p-tag), .panel > .hand { position: relative; z-index: 2; }
+
+/* 粒子基础：全部用 CSS 动画驱动 */
+.p-par {
+  position: absolute; line-height: 1; opacity: 0; will-change: transform, opacity;
+  filter: drop-shadow(0 0 5px var(--glow)) drop-shadow(0 0 12px var(--glow));
+  animation-duration: var(--dur); animation-timing-function: linear;
+  animation-iteration-count: 1; animation-fill-mode: forwards;
+}
+
+/* ============================================================
+   1. 中毒 —— 气泡上浮 / 毒液下滴 / 毒雾团 / 冒泡脉冲
+   ============================================================ */
+@keyframes aRiseWob {
+  0%   { transform: translate(-50%, 0) scale(.7); opacity: 0; }
+  12%  { opacity: var(--op); }
+  50%  { transform: translate(calc(-50% + var(--wob)), -45%) scale(1.05); opacity: var(--op); }
+  85%  { opacity: calc(var(--op) * .5); }
+  100% { transform: translate(-50%, -95%) scale(1.35); opacity: 0; }
+}
+@keyframes aDripDown {
+  0%   { transform: translate(-50%, 0) scale(.5) scaleY(1.6); opacity: 0; }
+  14%  { opacity: var(--op); transform: translate(-50%, 6%) scale(.9) scaleY(1.2); }
+  70%  { transform: translate(-50%, 74%) scale(1) scaleY(1); opacity: var(--op); }
+  100% { transform: translate(-50%, 102%) scale(1.2) scaleY(1.4); opacity: 0; }
+}
+@keyframes aFog { 0%,100% { opacity:.25; transform:scale(1) } 50% { opacity:.8; transform:scale(1.15) } }
+@keyframes aBubblePop {
+  0%   { transform: translate(-50%,-50%) scale(.2); opacity: 0; }
+  25%  { opacity: var(--op); }
+  70%  { transform: translate(-50%,-50%) scale(1.4); opacity: var(--op); }
+  100% { transform: translate(-50%,-50%) scale(2.2); opacity: 0; }
+}
+.par-poison { color: #c98bff; animation-name: aRiseWob; }
+.par-acid   { color: #9b59ff; animation-name: aDripDown; border-radius: 50% 50% 40% 40%; }
+.par-fog    { color: #7b3fd4; animation-name: aFog; filter: blur(7px); }
+.par-pop    { color: #d9a6ff; animation-name: aBubblePop; font-weight: 900; }
+
+/* ============================================================
+   2. 焚烧 —— 火焰上冲 / 火星飞溅 / 上浮浓烟 / 明暗热浪
+   ============================================================ */
+@keyframes aRiseFlick {
+  0%   { transform: translate(-50%, 0) scale(.8) rotate(0deg); opacity: 0; }
+  10%  { opacity: var(--op); }
+  25%  { transform: translate(calc(-50% + var(--wob)), -26%) scale(1.1) rotate(10deg); }
+  45%  { opacity: calc(var(--op) * .7); transform: translate(-50%, -46%) scale(.95) rotate(-8deg); }
+  65%  { opacity: var(--op); transform: translate(calc(-50% - var(--wob)), -66%) scale(1.15) rotate(12deg); }
+  100% { transform: translate(-50%, -100%) scale(1.6) rotate(-14deg); opacity: 0; }
+}
+@keyframes aSparkFly {
+  0%   { transform: translate(-50%,-50%) scale(1.5); opacity: 0; }
+  15%  { opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--wob)), calc(-50% - var(--wob) * .6)) scale(.3); opacity: 0; }
+}
+@keyframes aSmokeUp {
+  0%   { transform: translate(-50%, 0) scale(.4); opacity: 0; }
+  20%  { opacity: calc(var(--op) * .8); }
+  100% { transform: translate(calc(-50% + var(--wob)), -90%) scale(2.4); opacity: 0; }
+}
+@keyframes aHeatShimmer { 0%,100% { opacity:.2; transform:scaleY(1) } 50% { opacity:.65; transform:scaleY(1.06) } }
+.par-fire { color: #ffb03a; animation-name: aRiseFlick; }
+.par-ember { color: #ffea8a; animation-name: aSparkFly; }
+.par-smoke { color: #6a4a3a; animation-name: aSmokeUp; filter: blur(6px) drop-shadow(0 0 8px #ff6b00); }
+.par-heat  { color: #ff9b2f; animation-name: aHeatShimmer; filter: blur(4px); }
+
+/* ============================================================
+   3. 末日 —— 陨石下落 / 上升黑烟 / 地面火光 / 红色电弧
+   ============================================================ */
+@keyframes aFall {
+  0%   { transform: translate(-50%, 0) scale(.6) rotate(0deg); opacity: 0; }
+  12%  { opacity: var(--op); }
+  55%  { transform: translate(calc(-50% + var(--wob)), 50%) scale(1) rotate(180deg); opacity: var(--op); }
+  100% { transform: translate(-50%, 108%) scale(1.15) rotate(360deg); opacity: 0; }
+}
+@keyframes aAshFall {
+  0%   { transform: translate(-50%, 0) scale(1); opacity: 0; }
+  20%  { opacity: calc(var(--op) * .7); }
+  100% { transform: translate(calc(-50% + var(--wob)), 110%) scale(.6); opacity: 0; }
+}
+@keyframes aGlowPulse { 0%,100% { opacity:.3; transform:scale(1) } 50% { opacity:.9; transform:scale(1.18) } }
+@keyframes aArcFlash {
+  0%,100% { opacity: 0; }
+  8%  { opacity: var(--op); }
+  16% { opacity: 0; }
+  30% { opacity: calc(var(--op) * .8); }
+  40% { opacity: 0; }
+}
+.par-doom   { color: #ff5a2a; animation-name: aFall; }
+.par-ash    { color: #8a4a2a; animation-name: aAshFall; filter: blur(2px); }
+.par-doomfire { color: #ff9500; animation-name: aGlowPulse; filter: blur(5px); font-size: 34px; }
+.par-arc    { color: #ff3b1f; animation-name: aArcFlash; font-weight: 900; }
+
+/* ============================================================
+   4. 八音盒诅咒 —— 音符上浮 / 星光闪 / 金色光带 / 光环脉冲
+   ============================================================ */
+@keyframes aRiseSpin {
+  0%   { transform: translate(-50%, 0) scale(.55) rotate(-30deg); opacity: 0; }
+  15%  { opacity: var(--op); }
+  50%  { transform: translate(calc(-50% + var(--wob)), -42%) scale(1.05) rotate(120deg); opacity: var(--op); }
+  100% { transform: translate(-50%, -92%) scale(1.3) rotate(320deg); opacity: 0; }
+}
+@keyframes aTwinkle {
+  0%,100% { transform: translate(-50%,-50%) scale(.3) rotate(0deg); opacity: 0; }
+  50% { transform: translate(-50%,-50%) scale(1.2) rotate(45deg); opacity: var(--op); }
+}
+@keyframes aRingPulse {
+  0%   { transform: translate(-50%,-50%) scale(.2); opacity: calc(var(--op) * 1.2); }
+  100% { transform: translate(-50%,-50%) scale(2.6); opacity: 0; }
+}
+.par-curse  { color: #ffe27a; animation-name: aRiseSpin; }
+.par-star   { color: #fff6c4; animation-name: aTwinkle; }
+.par-ring   { color: #ffd700; animation-name: aRingPulse;
+              border: 2px solid currentColor; border-radius: 50%; width: 1.6em; height: 1.6em;
+              background: transparent; }
+
+/* ============================================================
+   5. 震荡 —— 电火花飞散 / 电弧线 / 扩散涟漪 / 框体抖动
+   ============================================================ */
+@keyframes aSpark {
+  0%   { transform: translate(-50%,-50%) scale(1.5) rotate(0deg); opacity: 0; }
+  15%  { opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--wob)), calc(-50% + var(--wob) * .45)) scale(.4) rotate(180deg); opacity: 0; }
+}
+@keyframes aRipple {
+  0%   { transform: translate(-50%,-50%) scale(.2); opacity: calc(var(--op) * 1.1); }
+  100% { transform: translate(-50%,-50%) scale(3.2); opacity: 0; }
+}
+@keyframes aJitterBox {
+  0%   { transform: translate(0,0) }
+  25%  { transform: translate(1.5px,-1px) }
+  50%  { transform: translate(-1px,1.5px) }
+  75%  { transform: translate(1px,1px) }
+  100% { transform: translate(0,0) }
+}
+.par-shock { color: #a8d4ff; animation-name: aSpark; }
+.par-line  { color: #d6ecff; animation-name: aSpark; font-weight: 900; }
+.par-ripple { color: #78b4ff; animation-name: aRipple;
+              border: 2px solid currentColor; border-radius: 50%; width: 2em; height: 2em; background: transparent; }
+.p-shock .p-fx-box { animation: aJitterBox .16s steps(2,end) infinite; }
+
+/* ============================================================
+   6. 断头台 —— 刀片掉落 / 火花 / 红色打击线
+   ============================================================ */
+@keyframes aDropBlade {
+  0%   { transform: translate(-50%, 0) scaleX(.7) scaleY(1.8); opacity: 0; }
+  18%  { transform: translate(-50%, 22%) scaleX(1) scaleY(1); opacity: var(--op); }
+  34%  { transform: translate(-50%, 70%) scaleX(1.6) scaleY(.15); opacity: var(--op); }
+  70%  { transform: translate(-50%, 88%) scaleX(2.2) scaleY(.06); opacity: calc(var(--op) * .6); }
+  100% { transform: translate(-50%, 96%) scaleX(2.6) scaleY(.03); opacity: 0; }
+}
+@keyframes aSlashLine {
+  0%   { transform: translate(-50%,-50%) scaleX(0); opacity: 0; }
+  20%  { transform: translate(-50%,-50%) scaleX(1); opacity: var(--op); }
+  60%  { transform: translate(-50%,-50%) scaleX(1.2); opacity: calc(var(--op) * .7); }
+  100% { transform: translate(-50%,-50%) scaleX(1.4); opacity: 0; }
+}
+.par-guillotine { color: #e8e8e8; animation-name: aDropBlade; }
+.par-slash { color: #ff5a5a; animation-name: aSlashLine; height: 2px; background: currentColor;
+             filter: drop-shadow(0 0 8px #ff2d2d); }
+.par-bladespark { color: #fff2b0; animation-name: aSparkFly; }
+
+/* ============================================================
+   7. 红绿灯 —— 光点下流（变色）/ 顶部光晕 / 三色灯
+   ============================================================ */
+@keyframes aTrafficBeam {
+  0%   { transform: translate(-50%, 0) scale(.6); opacity: 0; color: #ff5050; }
+  20%  { transform: translate(-50%, 40%) scale(1.2); opacity: var(--op); color: #ff5050; }
+  40%  { transform: translate(-50%, 90%) scale(1.1); opacity: var(--op); color: #ffd400; }
+  60%  { transform: translate(-50%, 150%) scale(1); opacity: calc(var(--op) * .8); color: #3ddc50; }
+  100% { transform: translate(-50%, 300%) scale(.7); opacity: 0; color: #3ddc50; }
+}
+@keyframes aTrafficLamp {
+  0%,100% { opacity: 0; color: #ff5050; }
+  12% { opacity: 1; color: #ff5050; }
+  33% { opacity: 0; }
+  45% { opacity: 1; color: #ffd400; }
+  66% { opacity: 0; }
+  78% { opacity: 1; color: #3ddc50; }
+}
+.par-traffic { animation-name: aTrafficBeam; }
+.par-lamp { animation-name: aTrafficLamp; font-weight: 900; }
+.par-trafficbar { color: #ff5050; animation-name: aGlowPulse; filter: blur(4px); }
+
+/* ============================================================
+   8. 土豆地雷 —— 向上弹跳 / 底部脉冲 / 裂纹闪
+   ============================================================ */
+@keyframes aPopUp {
+  0%   { transform: translate(-50%, 0) scale(.4); opacity: 0; }
+  16%  { transform: translate(-50%, -22%) scale(1.25); opacity: 1; }
+  38%  { transform: translate(-50%, -8%) scale(.9); opacity: var(--op); }
+  100% { transform: translate(-50%, -70%) scale(.5); opacity: 0; }
+}
+@keyframes aPulseGround { 0%,100% { opacity:.3; transform:scale(.9) } 50% { opacity:1; transform:scale(1.15) } }
+@keyframes aCrackFlash { 0%,100% { opacity: 0 } 20% { opacity: var(--op) } 40% { opacity: .1 } 60% { opacity: var(--op) } }
+.par-mine { color: #ffc226; animation-name: aPopUp; }
+.par-ground { color: #ffb700; animation-name: aPulseGround; filter: blur(6px); font-size: 30px; }
+.par-crack { color: #ffe066; animation-name: aCrackFlash; font-weight: 900; }
+
+/* ============================================================
+   9. 饥荒 —— 枯叶横飘 / 干裂闪动 / 灰暗下沉
+   ============================================================ */
+@keyframes aDrift {
+  0%   { transform: translate(-50%, 0) rotate(0deg) scale(.8); opacity: 0; }
+  20%  { opacity: var(--op); }
+  50%  { transform: translate(calc(-50% + var(--wob)), -30%) rotate(140deg) scale(1); opacity: var(--op); }
+  100% { transform: translate(calc(-50% - var(--wob)), -62%) rotate(300deg) scale(.85); opacity: 0; }
+}
+@keyframes aSink {
+  0%   { transform: translate(-50%, 0) scale(1); opacity: 0; }
+  20%  { opacity: calc(var(--op) * .8); }
+  100% { transform: translate(-50%, 70%) scale(.7); opacity: 0; }
+}
+.par-famine { color: #d8a35a; animation-name: aDrift; }
+.par-dust { color: #8a6a3a; animation-name: aSink; filter: blur(3px); }
+.par-crackdry { color: #b08050; animation-name: aCrackFlash; font-weight: 900; }
+
+/* ============================================================
+   10. 护盾 —— 六边形轨道环绕 / 闪光 / 扩散环 / 边框光扫
+   ============================================================ */
+@keyframes aOrbit {
+  0%   { transform: translate(-50%,-50%) scale(.55) rotate(0deg); opacity: 0; }
+  18%  { opacity: var(--op); }
+  50%  { transform: translate(-50%,-50%) scale(1.1) rotate(60deg); opacity: var(--op); }
+  82%  { opacity: calc(var(--op) * .6); }
+  100% { transform: translate(-50%,-50%) scale(.7) rotate(120deg); opacity: 0; }
+}
+@keyframes aShieldRing {
+  0%   { transform: translate(-50%,-50%) scale(.35); opacity: calc(var(--op) * 1.1); }
+  100% { transform: translate(-50%,-50%) scale(2.4); opacity: 0; }
+}
+@keyframes aSweepX { 0% { transform: translateX(-120%) } 100% { transform: translateX(120%) } }
+.par-shield { color: #a8e6ff; animation-name: aOrbit; }
+.par-hexglow { color: #e6f9ff; animation-name: aTwinkle; }
+.par-shieldring { color: #7fd4ff; animation-name: aShieldRing;
+                  border: 2px solid currentColor; border-radius: 50%; width: 2.4em; height: 2.4em; background: transparent; }
+.p-shield .p-sweep { position: absolute; inset: 0; background: linear-gradient(105deg, transparent 42%, rgba(200,245,255,.45) 50%, transparent 58%);
+                     animation: aSweepX 2.6s linear infinite; }
+
+/* ============================================================
+   11. 反甲 —— 尖刺外顶 / 红色溅射 / 尖刺环
+   ============================================================ */
+@keyframes aThorn {
+  0%   { transform: translate(-50%,-50%) scale(.3) rotate(0deg); opacity: 0; }
+  18%  { transform: translate(-50%,-50%) scale(1.35) rotate(45deg); opacity: 1; }
+  45%  { transform: translate(-50%,-50%) scale(.95) rotate(90deg); opacity: var(--op); }
+  100% { transform: translate(-50%,-50%) scale(.4) rotate(135deg); opacity: 0; }
+}
+@keyframes aSpikeOut {
+  0%   { transform: translate(-50%,-50%) scale(.4); opacity: 0; }
+  30%  { transform: translate(-50%,-50%) scale(1.4); opacity: var(--op); }
+  100% { transform: translate(-50%,-50%) scale(2.6); opacity: 0; }
+}
+.par-thorns { color: #ff6b6b; animation-name: aThorn; }
+.par-spike { color: #ff3b3b; animation-name: aSpikeOut; filter: blur(1px); }
+.par-spiker { color: #ff8a8a; animation-name: aShieldRing;
+              border: 2px dashed currentColor; border-radius: 50%; width: 2.2em; height: 2.2em; background: transparent; }
+
+/* ============================================================
+   12. 治疗阻挡 —— 禁止符号飘过 / 灰色横杠下沉
+   ============================================================ */
+@keyframes aNoHeal {
+  0%   { transform: translate(-50%, 0) scale(.6) rotate(-8deg); opacity: 0; }
+  20%  { opacity: var(--op); }
+  60%  { transform: translate(calc(-50% + var(--wob)), -40%) scale(1) rotate(8deg); opacity: var(--op); }
+  100% { transform: translate(-50%, -80%) scale(.8) rotate(-6deg); opacity: 0; }
+}
+@keyframes aBarSink {
+  0%   { transform: translate(-50%, 0) scaleX(.4); opacity: 0; }
+  25%  { opacity: var(--op); }
+  100% { transform: translate(-50%, 80%) scaleX(1.2); opacity: 0; }
+}
+.par-noheal { color: #bdbdbd; animation-name: aNoHeal; }
+.par-bar { color: #9a9a9a; animation-name: aBarSink; height: 2px; background: currentColor; }

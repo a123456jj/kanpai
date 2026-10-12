@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>演出试用</title>
+<link rel="stylesheet" href="fx-panel.css">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+  body { background: #14141a; color: #e8e8ec; font-family: "Microsoft YaHei", sans-serif; }
+
+  #page { padding: 12px; height: 100%; position: relative; z-index: 10; overflow-y: auto; }
+  #fx-flash { position: fixed; inset: 0; pointer-events: none; z-index: 9990; opacity: 0; }
+  #fx { position: fixed; inset: 0; pointer-events: none; z-index: 9995; }
+  #fx *, #fx-flash * { pointer-events: none !important; }
+
+  @keyframes shake-light { 0%,100%{transform:translate(0,0)} 25%{transform:translate(-3px,2px)} 50%{transform:translate(3px,-2px)} 75%{transform:translate(-2px,-2px)} }
+  @keyframes shake-mid { 0%,100%{transform:translate(0,0) rotate(0)} 10%{transform:translate(-8px,4px) rotate(-.4deg)} 25%{transform:translate(9px,-5px) rotate(.4deg)} 40%{transform:translate(-11px,-3px) rotate(-.5deg)} 55%{transform:translate(10px,5px) rotate(.4deg)} 70%{transform:translate(-6px,3px) rotate(-.2deg)} 85%{transform:translate(4px,-2px) rotate(.1deg)} }
+  @keyframes shake-heavy { 0%,100%{transform:translate(0,0) rotate(0) scale(1)} 8%{transform:translate(-16px,8px) rotate(-.8deg) scale(1.01)} 20%{transform:translate(18px,-10px) rotate(.8deg) scale(1.015)} 34%{transform:translate(-20px,-8px) rotate(-.9deg) scale(1.01)} 48%{transform:translate(17px,10px) rotate(.7deg)} 62%{transform:translate(-12px,6px) rotate(-.5deg)} 76%{transform:translate(9px,-5px) rotate(.3deg)} 90%{transform:translate(-4px,2px) rotate(-.1deg)} }
+  @keyframes shake-quake { 0%,100%{transform:translate(0,0) rotate(0) scale(1)} 6%{transform:translate(-26px,14px) rotate(-1.4deg) scale(1.02)} 16%{transform:translate(28px,-18px) rotate(1.4deg) scale(1.03)} 28%{transform:translate(-32px,-14px) rotate(-1.5deg) scale(1.02)} 40%{transform:translate(28px,18px) rotate(1.2deg) scale(1.02)} 54%{transform:translate(-22px,12px) rotate(-1deg) scale(1.01)} 68%{transform:translate(16px,-9px) rotate(.7deg)} 82%{transform:translate(-9px,5px) rotate(-.4deg)} }
+
+  .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  button { background: #3a3a48; color: #e8e8ec; border: 1px solid #55556a; padding: 8px 14px;
+           border-radius: 5px; cursor: pointer; font-size: 14px; }
+  button:hover { background: #4a4a5c; }
+  button.big { background: #b8332f; border-color: #e0554f; font-weight: bold; font-size: 15px; }
+  button.blue { background: #1b5fa8; border-color: #3f9ae0; font-weight: bold; font-size: 15px; }
+  button.doom { background: #7a1414; border-color: #e04a4a; font-weight: bold; font-size: 15px; }
+  .panel { border: 1px solid #33334a; border-radius: 8px; padding: 10px; margin-bottom: 10px;
+           background: #22222c; position: relative; overflow: hidden; transition: box-shadow .4s;
+           box-shadow: inset 0 0 0 2px var(--p-edge, transparent), inset 0 0 26px var(--p-edge, transparent); }
+  .row { display: flex; gap: 12px; margin-top: 96px; }   /* 上方留 96px 给常驻单位卡 */
+  .side { flex: 1; }
+  .stat { display: inline-block; margin-right: 16px; font-size: 15px; }
+  .stat b { color: #7fd; }
+  .hp { font-size: 22px; font-weight: bold; color: #ff8080; }
+  h2 { margin: 4px 0 8px; font-size: 16px; }
+  .hand { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .card { width: 118px; min-height: 100px; padding: 8px; border-radius: 6px;
+          border: 1px solid #44445e; background: #2c2c3a; position: relative; }
+  .card .n { font-weight: bold; }
+  .card .c { position: absolute; top: 6px; right: 8px; color: #fd6; }
+  .card .t { font-size: 11px; color: #b0b0c0; margin-top: 4px; line-height: 1.3; }
+  .k-attack { border-left: 3px solid #e55; }
+  .k-block { border-left: 3px solid #59f; }
+  .k-special { border-left: 3px solid #cc8; }
+  .k-economy { border-left: 3px solid #7c7; }
+  #hint { color: #999; font-size: 12px; margin-top: 6px; line-height: 1.7; }
+  .hit { animation: hitflash .4s ease-out; }
+  @keyframes hitflash { 0%{filter:brightness(6) saturate(0); transform:translateX(0)} 30%{transform:translateX(10px)} 100%{filter:none; transform:translateX(0)} }
+  .statusbtn { padding: 5px 10px; font-size: 12px; }
+  .statusbtn.on { background: #2d6cdf; border-color: #5a9dff; }
+
+  /* 面板特效样式已移到 fx-panel.css */
+</style>
+</head>
+<body>
+
+<div id="page">
+  <div class="bar">
+    <b style="color:#fd6;font-size:17px">演出试用</b>
+    <button class="big" id="btnPunch">一拳（物理撞击）</button>
+    <button class="blue" id="btnLightning">闪电（雷暴）</button>
+    <button class="doom" id="btnDoom">末日（天罚）</button>
+    <button id="btnNuke" style="background:#5a2a00;border-color:#ffd166;font-weight:bold">☢️ 核弹（超大核弹掉下来）</button>
+    <button id="btnMeteor" style="background:#8a3a00;border-color:#ff8c42;font-weight:bold">☄️ 陨石坠落（飞行+砸地）</button>
+    <button id="btnFall" style="background:#4a3a1a;border-color:#ffd166">🎵 只播"飞行"声</button>
+    <button id="btnSlam" style="background:#6a2a1a;border-color:#ff6b35">💥 砸地声（音效已定稿）</button>
+    <span style="color:#666">|</span>
+    <span style="font-size:12px;color:#aaa">速度</span>
+    <button class="spd" data-spd="0.5">慢</button>
+    <button class="spd on" data-spd="0.7">中</button>
+    <button class="spd" data-spd="1">快</button>
+    <span style="color:#666">|</span>
+    <button id="btnShakeL">轻震</button>
+    <button id="btnShakeM">中震</button>
+    <button id="btnShakeH">重震</button>
+    <span style="color:#666">|</span>
+    <span id="audioState" style="font-size:12px;color:#888">声音：未初始化</span>
+    <span style="font-size:12px;color:#aaa">音量</span>
+    <input id="volSlider" type="range" min="0" max="100" value="85" style="width:80px;vertical-align:middle">
+    <span id="volLabel" style="font-size:12px;color:#7fd">85%</span>
+  </div>
+
+  <!-- ============ 出牌演出工作台（逐张调画面）============ -->
+  <div class="panel">
+    <b style="color:#fd6">🖼 出牌演出工作台</b>
+    <span style="font-size:12px;color:#999">—— 点一张牌，看它现在会长什么样（用来逐张调画面）</span>
+    <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap" id="cardBtns"></div>
+    <div style="margin-top:10px;border-top:1px solid #33334a;padding-top:8px">
+      <b style="color:#f88">☠️ 角色死亡</b>
+      <span style="font-size:12px;color:#999">—— 把对应的框切成两半</span>
+      <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+        <button id="btnKillOpp" class="statusbtn" style="border-color:#f88">切开对手的框</button>
+        <button id="btnKillMe" class="statusbtn" style="border-color:#f88">切开我的框</button>
+      </div>
+    </div>
+    <div style="margin-top:10px;border-top:1px solid #33334a;padding-top:8px">
+      <b style="color:#c8a8f0">🐉 常驻单位</b>
+      <span style="font-size:12px;color:#999">—— 召唤出来的单位会一直站在框边上（带血量/攻击）</span>
+      <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+        <button id="btnSummonMe" class="statusbtn" style="border-color:#a55cff">我召唤末影龙</button>
+        <button id="btnSummonOpp" class="statusbtn" style="border-color:#a55cff">对手召唤皮卡</button>
+        <button id="btnHurtUnit" class="statusbtn" style="border-color:#fd6">扣它 2 血</button>
+        <button id="btnKillUnit" class="statusbtn" style="border-color:#f88">打死一个单位</button>
+        <button id="btnClearUnits" class="statusbtn">清空单位</button>
+      </div>
+      <div style="font-size:12px;color:#888;margin-top:6px" id="unitState">场上：无</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <b style="color:#fd6">框内状态特效试用</b> —— 点一下给对手加上状态，看"对手框"里面会发生什么
+    <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap" id="statusBtns"></div>
+  </div>
+
+  <div class="row">
+    <div class="side panel" id="oppPanel">
+      <h2>对手（玩家2）</h2>
+      <div>
+        <span class="stat">❤ <span class="hp" id="oppHp">25</span></span>
+        <span class="stat">⚡ <b>5</b>/10</span>
+        <span class="stat">🃏 3</span>
+      </div>
+      <div id="hint">
+        速度：中等（约 3 秒）<br><br>
+        <b style="color:#f88">一拳</b>：横着飞进来 → 撞上翻正 → 定格放大 → 震屏<br>
+        <b style="color:#7fd">闪电</b>：乌云压顶 → 主雷 + 乱雷 + 三雷合击<br>
+        <b style="color:#e04a4a">末日</b>：世界褪成黑白 → 大字砸出 → 天变血红 → 陨石坠地 → 地裂 + 火 + 烟<br><br>
+        按空格键 = 重播上一个效果
+      </div>
+    </div>
+    <div class="side panel" id="mePanel">
+      <h2>我（玩家1）</h2>
+      <div>
+        <span class="stat">❤ <span class="hp">25</span></span>
+        <span class="stat">⚡ <b>8</b>/10</span>
+        <span class="stat">🃏 5</span>
+      </div>
+      <div class="hand">
+        <div class="card k-attack"><div class="c">7</div><div class="n">一拳</div><div class="t">造成 12 点伤害</div></div>
+        <div class="card k-attack"><div class="c">3</div><div class="n">闪电</div><div class="t">造成 5 点伤害</div></div>
+        <div class="card k-block"><div class="c">2</div><div class="n">飞轮</div><div class="t">顶掉一段伤害</div></div>
+        <div class="card k-special"><div class="c">0</div><div class="n">转换</div><div class="t">血能量互换</div></div>
+        <div class="card k-economy"><div class="c">0</div><div class="n">胡萝卜</div><div class="t">+2 能量</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="fx-flash"></div>
+<div id="fx"></div>
+
+<!-- 出错时，这里会显示红色的错误信息 -->
+<div id="errbox" style="position:fixed;left:0;right:0;bottom:0;z-index:100000;background:#500;
+  color:#fff;font-size:13px;padding:6px 10px;display:none;max-height:40%;overflow:auto;
+  font-family:Consolas,monospace;white-space:pre-wrap"></div>
+
+<script>
+  // 🔴 先装错误捕获：页面出任何错都显示出来
+  window.__errs = [];
+  function showErr(msg) {
+    window.__errs.push(msg);
+    var b = document.getElementById("errbox");
+    if (!b) return;
+    b.style.display = "block";
+    b.textContent = "⚠️ 页面出错了（请把这行发给作者）：\n" + window.__errs.slice(-6).join("\n");
+  }
+  window.onerror = function (m, src, line, col) {
+    showErr("Error: " + m + "  (" + String(src).split("/").pop() + ":" + line + ":" + col + ")");
+    return false;
+  };
+  window.addEventListener("unhandledrejection", function (e) {
+    showErr("Promise: " + (e.reason && e.reason.message ? e.reason.message : e.reason));
+  });
+  window.addEventListener("DOMContentLoaded", function () {
+    showErr("（这一行只是提示：脚本已开始执行）");
+  });
+</script>
+
+<script src="fx.js"></script>
+<script>
+  var busy = false;
+  var hp = 25;
+  var SPEED = 0.7;
+  var last = "punch";
+  var oppStatus = [];
+  var myStatus = [];
+
+  // ---------- 检查依赖 ----------
+  if (typeof FX !== "object" || FX === null) {
+    showErr("❌ fx.js 没有加载成功（FX 未定义）—— 所有的演出都点不了，请按 Ctrl+F5 强制刷新");
+  } else {
+    var missing = ["punch", "lightning", "doom", "shake", "flash", "setStatus", "clearStatusLayer"].filter(function (k) {
+      return typeof FX[k] !== "function";
+    });
+    if (missing.length) showErr("❌ fx.js 里缺少这些函数：" + missing.join(", "));
+  }
+
+  // ---------- 演出 ----------
+  function demo(kind) {
+    try {
+      if (typeof FX !== "object" || !FX) { showErr("❌ FX 没加载，点不了"); return; }
+      last = kind;
+      if (busy) return;
+      busy = true;
+      hp = 25;
+      var box = document.getElementById("oppHp");
+      box.textContent = hp;
+
+      var r = box.getBoundingClientRect();
+      var x = r.left + r.width / 2;
+      var y = r.top + r.height / 2 + 34;
+
+      var dmg, dur;
+      if (kind === "punch") {
+        dmg = 12; dur = (1250 + 2600) / SPEED;
+        FX.sfx("punch");
+        var _impact = FX.impact;
+        FX.impact = function (px, py, o) {
+          _impact(px, py, Object.assign({ text: "-12", speed: SPEED }, o || {}));
+          FX.impact = _impact;
+        };
+        FX.punch(x, y, SPEED);
+      } else if (kind === "lightning") {
+        dmg = 5; dur = 4200 / SPEED;
+        FX.sfx("thunder");
+        FX.lightning(x, y, SPEED);
+      } else {
+        dmg = 10; dur = 5200 / SPEED;
+        FX.sfx("doom", SPEED);
+        FX.doom(x, y, SPEED);
+      }
+
+      var hitAt = (kind === "punch" ? 1250 : kind === "lightning" ? 1500 : 2650) / SPEED;
+      setTimeout(function () {
+        box.classList.add("hit");
+        setTimeout(function () { box.classList.remove("hit"); }, 500 / SPEED);
+        hp = Math.max(0, hp - dmg);
+        box.textContent = hp;
+      }, hitAt);
+
+      setTimeout(function () { busy = false; }, dur);
+    } catch (e) {
+      showErr("demo() 出错: " + e.message);
+    }
+  }
+
+  // ---------- 框内状态特效 ----------
+  var STATUS_LIST = [
+    { name: "中毒", icon: "☠️" }, { name: "焚烧", icon: "🔥" }, { name: "末日", icon: "☄️" },
+    { name: "诅咒", icon: "🎵" }, { name: "震荡", icon: "💥" }, { name: "断头台", icon: "⚔️" },
+    { name: "红绿灯", icon: "🚦" }, { name: "土豆地雷", icon: "💣" }, { name: "饥荒", icon: "🌾" },
+    { name: "护盾", icon: "🛡" }, { name: "反甲", icon: "🦔" }, { name: "治疗阻挡", icon: "🚫" }
+  ];
+
+  function refreshStatus() {
+    try {
+      FX.setStatus(
+        { opp: oppStatus.slice(), me: myStatus.slice() },
+        { opp: "oppPanel", me: "mePanel" }
+      );
+    } catch (e) {
+      showErr("状态特效出错: " + e.message);
+    }
+  }
+
+  function toggleStatus(name) {
+    var i = oppStatus.indexOf(name);
+    if (i >= 0) oppStatus.splice(i, 1); else oppStatus.push(name);
+    refreshStatus();
+    updateBtnStates();
+  }
+  function toggleMyStatus(name) {
+    var i = myStatus.indexOf(name);
+    if (i >= 0) myStatus.splice(i, 1); else myStatus.push(name);
+    refreshStatus();
+    updateBtnStates();
+  }
+  function clearAll() {
+    oppStatus = []; myStatus = [];
+    FX.clearStatusLayer({ opp: "oppPanel", me: "mePanel" });
+    updateBtnStates();
+  }
+  function updateBtnStates() {
+    var box = document.getElementById("statusBtns");
+    var btns = box.querySelectorAll("button");
+    for (var i = 0; i < btns.length; i++) {
+      var b = btns[i];
+      var n = b.getAttribute("data-name");
+      var who = b.getAttribute("data-who");
+      var on = (who === "me") ? (myStatus.indexOf(n) >= 0) : (oppStatus.indexOf(n) >= 0);
+      if (on) b.classList.add("on"); else b.classList.remove("on");
+    }
+  }
+
+  // 生成状态按钮
+  (function buildButtons() {
+    var box = document.getElementById("statusBtns");
+    var html = "";
+    for (var i = 0; i < STATUS_LIST.length; i++) {
+      var s = STATUS_LIST[i];
+      html += '<button class="statusbtn" data-name="' + s.name + '" data-who="opp">'
+        + s.icon + " " + s.name + "</button>";
+    }
+    html += '<button class="statusbtn" data-name="中毒" data-who="me">（我中毒）</button>';
+    html += '<button class="statusbtn" id="btnClearAll">✖ 清空</button>';
+    box.innerHTML = html;
+
+    box.addEventListener("click", function (e) {
+      var b = e.target;
+      if (!b || b.tagName !== "BUTTON") return;
+      if (b.id === "btnClearAll") { clearAll(); return; }
+      var n = b.getAttribute("data-name");
+      var who = b.getAttribute("data-who");
+      if (!n) return;
+      if (who === "me") toggleMyStatus(n); else toggleStatus(n);
+    });
+  })();
+
+  // ---------- 按钮绑定 ----------
+  try {
+    function bind(id, fn) {
+      var el = document.getElementById(id);
+      if (!el) { showErr("找不到按钮: " + id); return; }
+      el.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        try { fn(); } catch (e) { showErr("按钮 " + id + " 出错: " + e.message); }
+      });
+    }
+    bind("btnPunch", function () { demo("punch"); });
+    bind("btnLightning", function () { demo("lightning"); });
+    bind("btnDoom", function () { demo("doom"); });
+    bind("btnMeteor", function () {
+      var box = document.getElementById("oppHp");
+      var r = box.getBoundingClientRect();
+      var x = r.left + r.width / 2, y = r.top + r.height / 2 + 34;
+      FX.unlockAudio();
+      FX.meteorFx(x, y, SPEED);   // 画面 + 飞行声 + 砸地声（都按 SPEED 缩放，严格对齐）
+      box.classList.add("hit");
+      setTimeout(function () { box.classList.remove("hit"); }, 500);
+      box.textContent = "5";
+    });
+    bind("btnFall", function () { FX.unlockAudio(); FX.sfxFall(1200); });
+    bind("btnSlam", function () { FX.unlockAudio(); FX.sfxSlam(); });
+    bind("btnShakeL", function () { FX.shake("light"); });
+    bind("btnShakeM", function () { FX.shake("mid"); });
+    bind("btnShakeH", function () { FX.shake("heavy"); });
+    bind("btnKillOpp", function () { FX.splitPanel("oppPanel", { speed: SPEED }); });
+    bind("btnKillMe", function () { FX.splitPanel("mePanel", { speed: SPEED }); });
+
+    // ---------- 常驻单位演示 ----------
+    var UNITS = { me: [], opp: [] };
+    function renderUnits() {
+      FX.syncUnits(UNITS);
+      var el = document.getElementById("unitState");
+      if (!el) return;
+      var parts = [];
+      if (UNITS.me.length) parts.push("我方：" + UNITS.me.map(function (u) { return u.name + "(" + u.hp + "❤/" + u.atk + "⚔)"; }).join("、"));
+      if (UNITS.opp.length) parts.push("对方：" + UNITS.opp.map(function (u) { return u.name + "(" + u.hp + "❤/" + u.atk + "⚔)"; }).join("、"));
+      el.textContent = "场上：" + (parts.length ? parts.join("　|　") : "无");
+    }
+    bind("btnSummonMe", function () {
+      var el = document.getElementById("oppHp");
+      var r = el.getBoundingClientRect();
+      FX.unlockAudio();
+      // onLand：龙冲出来的那一刻就把单位放上场（不用等固定时长）
+      FX.castFx("末影龙", {
+        pos: { x: r.left + r.width / 2, y: r.top + r.height / 2 + 34 },
+        speed: SPEED,
+        onLand: function () {
+          UNITS.me.push({ name: "末影龙", hp: 5, atk: 2 });
+          renderUnits();
+        }
+      });
+    });
+    bind("btnSummonOpp", function () {
+      var el = document.getElementById("oppHp");
+      var r = el.getBoundingClientRect();
+      FX.unlockAudio();
+      FX.castFx("皮卡", {
+        pos: { x: r.left + r.width / 2, y: r.top + r.height / 2 + 34 },
+        speed: SPEED,
+        onLand: function () {
+          UNITS.opp.push({ name: "皮卡", hp: 6, atk: 3 });
+          renderUnits();
+        }
+      });
+    });
+    bind("btnHurtUnit", function () {
+      var all = UNITS.me.concat(UNITS.opp);
+      if (!all.length) return;
+      var u = all[Math.floor(Math.random() * all.length)];
+      u.hp = Math.max(0, u.hp - 2);
+      renderUnits();
+    });
+    bind("btnKillUnit", function () {
+      if (UNITS.me.length) UNITS.me.shift();
+      else if (UNITS.opp.length) UNITS.opp.shift();
+      renderUnits();
+    });
+    bind("btnClearUnits", function () {
+      UNITS.me = []; UNITS.opp = [];
+      if (FX.clearUnits) FX.clearUnits();
+      renderUnits();
+    });
+    renderUnits();
+    bind("btnNuke", function () {
+      var box = document.getElementById("oppHp");
+      var r = box.getBoundingClientRect();
+      var x = r.left + r.width / 2, y = r.top + r.height / 2 + 34;
+      FX.unlockAudio();
+      FX.castFx("核弹", { pos: { x: x, y: y }, speed: SPEED });
+      setTimeout(function () {
+        box.classList.add("hit");
+        setTimeout(function () { box.classList.remove("hit"); }, 500);
+        box.textContent = "3";
+      }, 1100 / SPEED);
+    });
+
+    // ---------- 音量滑块 ----------
+    var vol = document.getElementById("volSlider");
+    var volLabel = document.getElementById("volLabel");
+    if (vol && FX.getVolume) {
+      vol.value = String(Math.round(FX.getVolume() * 100));
+      volLabel.textContent = vol.value + "%";
+      vol.addEventListener("input", function () {
+        var v = Number(vol.value) / 100;
+        if (FX.setVolume) FX.setVolume(v);
+        volLabel.textContent = vol.value + "%";
+      });
+      vol.addEventListener("change", function () { FX.unlockAudio(); FX.sfx("card"); });
+    }
+
+    // ---------- 速度切换 ----------
+    var spdBtns = document.querySelectorAll(".spd");
+    for (var i = 0; i < spdBtns.length; i++) {
+      spdBtns[i].addEventListener("click", function (ev) {
+        var b = ev.currentTarget;
+        SPEED = Number(b.getAttribute("data-spd")) || 0.7;
+        for (var j = 0; j < spdBtns.length; j++) spdBtns[j].classList.remove("on");
+        b.classList.add("on");
+      });
+    }
+
+    // ---------- 出牌演出工作台 ----------
+    //   把 60 张牌都列出来，点一下看它现在的画面效果
+    (function buildCardButtons() {
+      var box2 = document.getElementById("cardBtns");
+      if (!box2) return;
+      var CARDS = (typeof CARD_LIST !== "undefined" && CARD_LIST) ? CARD_LIST : null;
+      var names = [];
+      if (FX.CARD_FX) {
+        for (var k in FX.CARD_FX) names.push(k);
+      }
+      if (!names.length) {
+        box2.innerHTML = "<span style='color:#f88'>⚠️ 没能从 fx.js 拿到卡牌演出表（FX.CARD_FX 不存在）</span>";
+        return;
+      }
+      names.sort(function (a, b) {
+        // 有专属音效/专属演出的排前面
+        var sa = (FX.CARD_SFX && FX.CARD_SFX[a]) ? 1 : 0;
+        var sb = (FX.CARD_SFX && FX.CARD_SFX[b]) ? 1 : 0;
+        return sb - sa;
+      });
+      names.forEach(function (nm) {
+        var b = document.createElement("button");
+        b.textContent = nm;
+        b.className = "statusbtn";
+        b.style.fontSize = "12px";
+        if (FX.CARD_SFX && FX.CARD_SFX[nm]) b.style.borderColor = "#ffd166";
+        b.addEventListener("click", function () {
+          try {
+            var el = document.getElementById("oppHp");
+            var rr = el.getBoundingClientRect();
+            var px = rr.left + rr.width / 2, py = rr.top + rr.height / 2 + 34;
+            FX.unlockAudio();
+            var info = FX.castFx(nm, { pos: { x: px, y: py } });
+            // 让靶子闪一下 + 掉血，方便看"打中"的感觉
+            el.classList.add("hit");
+            setTimeout(function () { el.classList.remove("hit"); }, 500);
+            var cardInfo = null;
+            if (window.CARDS_DB && window.CARDS_DB[nm]) cardInfo = window.CARDS_DB[nm];
+            var dmg = (cardInfo && cardInfo.dmg) ? cardInfo.dmg : 2;
+            el.textContent = String(Math.max(0, Number(el.textContent) - dmg));
+          } catch (e) { showErr("出牌演出出错: " + e.message); }
+        });
+        box2.appendChild(b);
+      });
+    })();
+  } catch (e) {
+    showErr("绑定按钮时出错: " + e.message);
+  }
+
+  // ---------- 显示声音状态 ----------
+  function updateAudioLabel(state) {
+    var el = document.getElementById("audioState");
+    if (!el) return;
+    if (state === "running") {
+      el.textContent = "🔊 声音：已就绪";
+      el.style.color = "#7f7";
+    } else if (state === "suspended") {
+      el.textContent = "🔇 声音：被浏览器拦住了（点一下页面任意处）";
+      el.style.color = "#fd6";
+    } else {
+      el.textContent = "声音：未初始化（点一下页面）";
+      el.style.color = "#888";
+    }
+  }
+  window.addEventListener("fx-audio-state", function (e) { updateAudioLabel(e.detail); });
+  // 任何点击都刷新一下状态显示
+  document.addEventListener("click", function () {
+    setTimeout(function () { updateAudioLabel(FX.getAudioState()); }, 200);
+  });
+  setTimeout(function () { updateAudioLabel(FX.getAudioState()); }, 300);
+
+  document.addEventListener("keydown", function (e) {
+    if (e.code === "Space") { e.preventDefault(); demo(last); }
+  });
+
+  console.log("演出试用页已就绪");
+</script>
+</body>
+</html>

@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>卡牌徽记 · Logo 动画</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:#000;color:#e8e8ec;
+    font-family:"Helvetica Neue","Microsoft YaHei",sans-serif;overflow-x:hidden}
+  .head{padding:20px 24px;background:#000;border-bottom:1px solid #1a1a1a;
+    position:sticky;top:0;z-index:100}
+  .head h1{margin:0 0 8px;font-size:17px;font-weight:300;letter-spacing:6px;color:#c9a227}
+  .head p{margin:0;font-size:12px;color:#555;line-height:1.8;letter-spacing:.5px}
+  .bar{padding:11px 24px;background:#0a0a0a;border-bottom:1px solid #1a1a1a;
+    display:flex;gap:10px;flex-wrap:wrap;align-items:center;position:sticky;top:92px;z-index:99}
+  .bar .lab{font-size:11px;color:#555;letter-spacing:2px}
+  .bar button{background:#111;color:#999;border:1px solid #262626;padding:7px 16px;
+    border-radius:3px;cursor:pointer;font-size:11.5px;letter-spacing:1.5px;transition:.2s}
+  .bar button:hover{background:#1a1a1a;color:#ddd;border-color:#444}
+  .bar button.on{background:#c9a227;border-color:#e8c44a;color:#000;font-weight:bold}
+  .bar input[type=range]{width:120px;accent-color:#c9a227}
+  .cell{position:relative;height:600px;background:#000;overflow:hidden;
+    border-bottom:1px solid #0f0f0f}
+  .cell canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .meta{position:absolute;left:26px;bottom:22px;z-index:6;pointer-events:none}
+  .meta .no{font-size:10px;color:#c9a227;letter-spacing:4px}
+  .meta .nm{font-size:14px;color:#ccc;letter-spacing:3px;margin:4px 0 5px;font-weight:300}
+  .meta .ds{font-size:11px;color:#4a4a4a;line-height:1.7;max-width:400px;letter-spacing:.3px}
+  .cell .rp{position:absolute;right:24px;top:20px;z-index:6;
+    background:transparent;color:#555;border:1px solid #222;
+    padding:6px 14px;border-radius:3px;cursor:pointer;font-size:11px;letter-spacing:1.5px}
+  .cell .rp:hover{color:#c9a227;border-color:#c9a227}
+  .cell .pf{position:absolute;right:24px;bottom:22px;z-index:6;
+    font-size:10px;color:#2a2a2a;font-variant-numeric:tabular-nums;letter-spacing:1px}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>CARD  ·  EMBLEM</h1>
+  <p>6 种【图形徽记】的 logo 动画 · 纯黑底 + 单色金属 + 粒子 · 全部 Canvas 绘制，共享一个 RAF 主循环<br>
+     每格循环播放，点右上角可重播。看中编号告诉我，也可以混搭（比如 03 的出场 + 05 的收尾）</p>
+</div>
+
+<div class="bar">
+  <span class="lab">速度</span>
+  <button class="spd" data-s="1.5">慢</button>
+  <button class="spd on" data-s="1">正常</button>
+  <button class="spd" data-s="0.7">快</button>
+  <span class="lab" style="margin-left:16px">粒子</span>
+  <input type="range" id="pc" min="25" max="130" value="100">
+  <span class="lab" id="pcLab">100%</span>
+  <span style="flex:1"></span>
+  <button id="all">全部重播</button>
+  <span class="lab" id="fps">FPS</span>
+</div>
+
+<div id="grid"></div>
+
+<script>
+// ================================================================
+//  共用底座：一个 RAF 主循环 + Canvas 绘制
+//  调色：金 #c9a227 / 银 #c8d4e0 / 青 #4ad0c8 / 血红 #c1121f
+// ================================================================
+const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+  (navigator.maxTouchPoints > 1 && Math.min(innerWidth, innerHeight) < 700);
+const DPR = Math.min(devicePixelRatio || 1, 2);
+let PSPEED = 1, PSCALE = 1;
+
+const E = {
+  outCubic: t => 1 - Math.pow(1 - t, 3),
+  outQuart: t => 1 - Math.pow(1 - t, 4),
+  outQuint: t => 1 - Math.pow(1 - t, 5),
+  outExpo: t => t >= 1 ? 1 : 1 - Math.pow(2, -10 * t),
+  inOutCubic: t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+  inOutQuint: t => t < .5 ? 16 * t ** 5 : 1 - Math.pow(-2 * t + 2, 5) / 2,
+  outBack: t => { const c1 = 1.4, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); },
+  outElastic: t => { if (t === 0 || t === 1) return t; const p = .3;
+    return Math.pow(2, -11 * t) * Math.sin((t - p / 4) * (2 * Math.PI) / p) + 1; },
+};
+const cl = t => t < 0 ? 0 : t > 1 ? 1 : t;
+const lp = (a, b, t) => a + (b - a) * t;
+const rd = (a, b) => a + Math.random() * (b - a);
+
+// ---------- 徽记造型（共用一套几何，方便换色换风格）----------
+function badgePath(ctx, cx, cy, s) {
+  // 一个"卡牌 + 盾牌"混合的徽记：上圆角矩形 + 下方收尖
+  const w = s * .62, h = s * .86;
+  const x0 = cx - w / 2, y0 = cy - h / 2;
+  ctx.beginPath();
+  const r = s * .09;
+  ctx.moveTo(x0 + r, y0);
+  ctx.lineTo(x0 + w - r, y0);
+  ctx.quadraticCurveTo(x0 + w, y0, x0 + w, y0 + r);
+  ctx.lineTo(x0 + w, y0 + h * .62);
+  ctx.quadraticCurveTo(x0 + w, y0 + h * .78, cx, y0 + h);
+  ctx.quadraticCurveTo(x0, y0 + h * .78, x0, y0 + h * .62);
+  ctx.lineTo(x0, y0 + r);
+  ctx.quadraticCurveTo(x0, y0, x0 + r, y0);
+  ctx.closePath();
+}
+function hexPath(ctx, cx, cy, s) {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = -Math.PI / 2 + i * Math.PI / 3;
+    const x = cx + Math.cos(a) * s * .5, y = cy + Math.sin(a) * s * .5;
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.closePath();
+}
+function diamondPath(ctx, cx, cy, s) {
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - s * .5); ctx.lineTo(cx + s * .38, cy);
+  ctx.lineTo(cx, cy + s * .5); ctx.lineTo(cx - s * .38, cy);
+  ctx.closePath();
+}
+function ringPath(ctx, cx, cy, r) { ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.2832); }
+
+// ---------- 基类 ----------
+class Logo {
+  constructor(root) {
+    this.root = root;
+    this.canvas = document.createElement("canvas");
+    root.appendChild(this.canvas);
+    this.ctx = this.canvas.getContext("2d");
+    this.t = 0; this.parts = [];
+    this.resize();
+    this.init && this.init();
+  }
+  resize() {
+    const r = this.root.getBoundingClientRect();
+    this.W = Math.max(320, Math.round(r.width));
+    this.H = Math.max(240, Math.round(r.height));
+    this.canvas.width = this.W * DPR; this.canvas.height = this.H * DPR;
+    this.ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    this.cx = this.W / 2; this.cy = this.H / 2;
+    this.S = Math.min(this.W, this.H) * .46;      // 徽记基准尺寸
+  }
+  // 发光点
+  dot(x, y, r, col, a) {
+    const ctx = this.ctx;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, col); g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.globalAlpha = a; ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
+  }
+  // 金属渐变（左亮右暗，像打了侧光）
+  metal(ctx, x0, y0, x1, y1, base) {
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    if (base === "gold") {
+      g.addColorStop(0, "#fff3c4"); g.addColorStop(.18, "#e8c44a");
+      g.addColorStop(.42, "#a87c14"); g.addColorStop(.52, "#6a4a08");
+      g.addColorStop(.6, "#c9a227"); g.addColorStop(.82, "#ffe98a");
+      g.addColorStop(1, "#8a6410");
+    } else if (base === "silver") {
+      g.addColorStop(0, "#ffffff"); g.addColorStop(.2, "#dfe8f2");
+      g.addColorStop(.45, "#8fa0b4"); g.addColorStop(.55, "#5a6878");
+      g.addColorStop(.68, "#c8d4e0"); g.addColorStop(.85, "#ffffff");
+      g.addColorStop(1, "#7a8898");
+    } else if (base === "cyan") {
+      g.addColorStop(0, "#e0fffb"); g.addColorStop(.2, "#7ee8dc");
+      g.addColorStop(.45, "#2a9a92"); g.addColorStop(.55, "#0d4a46");
+      g.addColorStop(.7, "#4ad0c8"); g.addColorStop(1, "#1a6a64");
+    } else {
+      g.addColorStop(0, "#ffd9dc"); g.addColorStop(.2, "#e05a66");
+      g.addColorStop(.45, "#8a0c18"); g.addColorStop(.55, "#4a0008");
+      g.addColorStop(.7, "#c1121f"); g.addColorStop(1, "#6a0810");
+    }
+    return g;
+  }
+  // 柔和外发光（叠画放大版）
+  bloom(drawFn, alpha, spread) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 3; i >= 1; i--) {
+      ctx.globalAlpha = alpha * (0.16 / i);
+      ctx.save();
+      ctx.translate(this.cx, this.cy);
+      ctx.scale(1 + spread * i * .012, 1 + spread * i * .012);
+      ctx.translate(-this.cx, -this.cy);
+      drawFn(ctx);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+  stepP(dt) {
+    for (let i = this.parts.length - 1; i >= 0; i--) {
+      const p = this.parts[i];
+      p.life += dt;
+      if (p.life >= p.max) { this.parts.splice(i, 1); continue; }
+      p.vy += (p.g || 0) * dt;
+      p.vx *= Math.pow(p.drag || .96, dt * 60);
+      p.vy *= Math.pow(p.drag || .96, dt * 60);
+      if (p.turb) {
+        p.vx += Math.sin(p.life * 6 + p.seed) * p.turb * dt * 60;
+        p.vy += Math.cos(p.life * 5 + p.seed * 1.6) * p.turb * dt * 60;
+      }
+      p.x += p.vx * dt * 60; p.y += p.vy * dt * 60;
+    }
+  }
+  destroy() { try { this.canvas.remove(); } catch (e) { } this.dead = true; }
+}
+
+// ================================================================
+//  ① 环 · 绽放
+//     一圈金属环从细线描出来 → 环上扫过一道光 → 徽记从环心"长"出来
+// ================================================================
+class LogoTorus extends Logo {
+  init() { this.color = "gold"; this.parts = []; }
+  draw() {
+    const ctx = this.ctx, { W, H, cx, cy, S } = this, t = this.t;
+    ctx.clearRect(0, 0, W, H);
+    // 底光
+    const bg = ctx.createRadialGradient(cx, cy, 4, cx, cy, S * 1.5);
+    bg.addColorStop(0, "rgba(60,44,10,.22)"); bg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    const T = { draw: .95, sweep: .55, rise: .8 };
+    const dk = cl(t / T.draw), ek = E.inOutQuint(dk);
+    const sk = cl((t - T.draw * .82) / T.sweep);
+    const rk = cl((t - T.draw * .9) / T.rise);
+    const r = S * .52;
+
+    // ① 环（用 stroke 逐段画：dash offset 手法）
+    const ctx2 = ctx;
+    ctx2.save();
+    ctx2.lineWidth = Math.max(2, S * .018);
+    // 环的青金双色
+    const cg = ctx2.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+    cg.addColorStop(0, "#fff3c4"); cg.addColorStop(.35, "#e8c44a");
+    cg.addColorStop(.5, "#c9a227"); cg.addColorStop(.75, "#8a6410");
+    cg.addColorStop(1, "#e8c44a");
+    ctx2.strokeStyle = cg;
+    ctx2.globalAlpha = cl(t / .5);
+    // 用 arc 画部分圆
+    ctx2.beginPath();
+    ctx2.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + 6.2832 * ek);
+    ctx2.stroke();
+
+    // ② 环上扫光（一段更亮的弧 + 一个亮点）
+    if (sk > 0 && sk < 1) {
+      const a0 = -Math.PI / 2 + 6.2832 * E.inOutCubic(sk) - .5;
+      ctx2.save();
+      ctx2.globalCompositeOperation = "lighter";
+      ctx2.lineWidth = Math.max(3, S * .03);
+      ctx2.strokeStyle = "rgba(255,255,255,.95)";
+      ctx2.globalAlpha = Math.sin(sk * Math.PI) * .9;
+      ctx2.beginPath();
+      ctx2.arc(cx, cy, r, a0, a0 + 1.0);
+      ctx2.stroke();
+      // 亮点
+      const hx = cx + Math.cos(a0 + .5) * r, hy = cy + Math.sin(a0 + .5) * r;
+      this.dot(hx, hy, S * .14, "rgba(255,240,180,1)", Math.sin(sk * Math.PI) * .8);
+      ctx2.restore();
+    }
+    ctx2.restore();
+
+    // ③ 徽记从环心升起（缩放 + 淡入）
+    if (rk > 0) {
+      const k = E.outBack(rk);
+      const bs = S * .74 * lp(.55, 1, k);
+      ctx.save();
+      ctx.globalAlpha = cl(rk * 1.6);
+      ctx.translate(cx, cy + (1 - k) * S * .06);
+      // 外发光
+      this.bloom((c) => {
+        c.save(); c.translate(cx, cy + (1 - k) * S * .06); c.scale(lp(.55, 1, k), lp(.55, 1, k));
+        c.translate(-cx, -(cy + (1 - k) * S * .06));
+        badgePath(c, cx, cy, bs * 1.02);
+        c.fillStyle = "rgba(232,196,74,.5)"; c.fill();
+        c.restore();
+      }, 1, 4);
+      // 徽记本体：金属填充 + 内描边
+      badgePath(ctx, cx, cy, bs);
+      ctx.fillStyle = this.metal(ctx, cx - bs * .5, cy - bs * .5, cx + bs * .5, cy + bs * .5, "gold");
+      ctx.fill();
+      ctx.lineWidth = Math.max(1, S * .008);
+      ctx.strokeStyle = "rgba(255,248,210,.85)";
+      ctx.stroke();
+      // 内部一道冷高光（金属反光）
+      ctx.save();
+      badgePath(ctx, cx, cy, bs); ctx.clip();
+      const hg = ctx.createLinearGradient(cx - bs * .5, cy - bs * .5, cx + bs * .1, cy - bs * .1);
+      hg.addColorStop(0, "rgba(255,255,255,.55)"); hg.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = hg; ctx.fillRect(cx - bs, cy - bs, bs * 2, bs * 2);
+      // 内部再套一个小菱形（徽记的"芯"）
+      diamondPath(ctx, cx, cy - bs * .04, bs * .34);
+      ctx.fillStyle = "rgba(20,14,4,.55)"; ctx.fill();
+      ctx.strokeStyle = "rgba(255,243,196,.9)";
+      ctx.lineWidth = Math.max(1, S * .006); ctx.stroke();
+      ctx.restore();
+      ctx.restore();
+    }
+
+    // ④ 呼吸脉冲
+    const pulse = .5 + Math.sin(t * 1.7) * .5;
+    if (rk > .8) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = .1 * pulse * cl((t - T.draw - T.rise) / .6);
+      badgePath(ctx, cx, cy, S * .74 * 1.04);
+      ctx.fillStyle = "rgba(232,196,74,1)"; ctx.fill();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ================================================================
+//  ② 卡 · 展开
+//     一张卡从"侧面一条线"旋转展开成正面（3D 感），落定时光扫 + 冲击环
+// ================================================================
+class LogoCard extends Logo {
+  init() { this.color = "silver"; }
+  draw() {
+    const ctx = this.ctx, { W, H, cx, cy, S } = this, t = this.t;
+    ctx.clearRect(0, 0, W, H);
+    const bg = ctx.createRadialGradient(cx, cy, 4, cx, cy, S * 1.6);
+    bg.addColorStop(0, "rgba(40,50,64,.26)"); bg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    const T = { flip: 1.05, land: .45 };
+    const fk = cl(t / T.flip);
+    const lk = cl((t - T.flip * .93) / T.land);
+
+    // 卡尺寸
+    const cw = S * .72, chh = cw * 1.42;
+    // 入场：从 0 宽（侧着）转到正面
+    const ang = lp(-Math.PI * .92, 0, E.outQuint(fk));
+    const scaleIn = lp(.8, 1, E.outCubic(fk));
+    const yBob = Math.sin(t * 1.3) * S * .012;
+
+    ctx.save();
+    ctx.translate(cx, cy + yBob);
+    ctx.scale(scaleIn, scaleIn);
+    // 阴影（卡下方的一层暗影，增加"浮空"感）
+    ctx.save();
+    ctx.globalAlpha = .5 * fk;
+    ctx.filter = "none";
+    const sg = ctx.createRadialGradient(0, chh * .62, 4, 0, chh * .62, cw * .9);
+    sg.addColorStop(0, "rgba(0,0,0,.6)"); sg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = sg;
+    ctx.beginPath(); ctx.ellipse(0, chh * .62, cw * .9, cw * .22, 0, 0, 6.2832); ctx.fill();
+    ctx.restore();
+
+    // 用横向缩放模拟绕 Y 轴旋转
+    ctx.save();
+    ctx.scale(Math.max(.02, Math.abs(Math.cos(ang))), 1);
+    const flipSide = Math.cos(ang) < 0;
+
+    // 卡面
+    const r = cw * .08;
+    function cardPath(c) {
+      c.beginPath();
+      c.moveTo(-cw / 2 + r, -chh / 2);
+      c.lineTo(cw / 2 - r, -chh / 2);
+      c.quadraticCurveTo(cw / 2, -chh / 2, cw / 2, -chh / 2 + r);
+      c.lineTo(cw / 2, chh / 2 - r);
+      c.quadraticCurveTo(cw / 2, chh / 2, cw / 2 - r, chh / 2);
+      c.lineTo(-cw / 2 + r, chh / 2);
+      c.quadraticCurveTo(-cw / 2, chh / 2, -cw / 2, chh / 2 - r);
+      c.lineTo(-cw / 2, -chh / 2 + r);
+      c.quadraticCurveTo(-cw / 2, -chh / 2, -cw / 2 + r, -chh / 2);
+      c.closePath();
+    }
+
+    if (flipSide) {
+      // 卡背：深色 + 暗纹
+      cardPath(ctx);
+      ctx.fillStyle = "#0e1118"; ctx.fill();
+      ctx.strokeStyle = "rgba(140,160,190,.5)"; ctx.lineWidth = Math.max(1, cw * .012); ctx.stroke();
+      ctx.save(); cardPath(ctx); ctx.clip();
+      ctx.strokeStyle = "rgba(140,160,190,.12)"; ctx.lineWidth = 1;
+      for (let i = -6; i < 14; i++) {
+        ctx.beginPath(); ctx.moveTo(-cw, -chh / 2 + i * cw * .16); ctx.lineTo(cw, -chh / 2 + i * cw * .16 - cw * .5); ctx.stroke();
+      }
+      ctx.restore();
+    } else {
+      // 卡面：金属描边 + 内嵌徽记
+      // 外发光
+      this.bloom((c) => { c.save(); c.scale(1.02, 1.02); cardPath(c); c.fillStyle = "rgba(200,212,224,.35)"; c.fill(); c.restore(); }, .9, 3);
+      cardPath(ctx);
+      ctx.fillStyle = "#12161e"; ctx.fill();
+      // 金属边框
+      cardPath(ctx);
+      ctx.lineWidth = Math.max(2, cw * .035);
+      ctx.strokeStyle = this.metal(ctx, -cw / 2, -chh / 2, cw / 2, chh / 2, "silver");
+      ctx.stroke();
+      // 内框
+      ctx.save();
+      cardPath(ctx); ctx.clip();
+      ctx.strokeStyle = "rgba(200,212,224,.28)";
+      ctx.lineWidth = Math.max(1, cw * .01);
+      ctx.strokeRect(-cw / 2 + cw * .09, -chh / 2 + chh * .06, cw - cw * .18, chh - chh * .12);
+
+      // 中央徽记
+      const bs = cw * .52;
+      ctx.save();
+      ctx.translate(0, -chh * .04);
+      hexPath(ctx, 0, 0, bs);
+      ctx.fillStyle = this.metal(ctx, -bs / 2, -bs / 2, bs / 2, bs / 2, "silver");
+      ctx.fill();
+      ctx.lineWidth = Math.max(1, cw * .008); ctx.strokeStyle = "rgba(255,255,255,.7)"; ctx.stroke();
+      // 芯
+      diamondPath(ctx, 0, 0, bs * .42);
+      ctx.fillStyle = "rgba(10,14,20,.7)"; ctx.fill();
+      ctx.strokeStyle = "rgba(220,235,255,.9)"; ctx.lineWidth = Math.max(1, cw * .006); ctx.stroke();
+      // 一条水平刻线（像卡的装订）
+      ctx.strokeStyle = "rgba(160,180,205,.22)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-cw * .36, chh * .28); ctx.lineTo(cw * .36, chh * .28); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-cw * .36, chh * .33); ctx.lineTo(cw * .36, chh * .33); ctx.stroke();
+      ctx.restore();
+
+      // 光扫（落定后从左上扫到右下）
+      const sk = cl((t - T.flip) / .7);
+      if (sk > 0 && sk < 1) {
+        const p = E.inOutCubic(sk);
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = Math.sin(sk * Math.PI) * .85;
+        const sw = cw * 1.6;
+        const gx = lp(-cw, cw * 1.4, p);
+        const g = ctx.createLinearGradient(gx - sw * .3, -chh, gx + sw * .3, chh);
+        g.addColorStop(0, "rgba(255,255,255,0)");
+        g.addColorStop(.45, "rgba(220,240,255,.25)");
+        g.addColorStop(.5, "rgba(255,255,255,.95)");
+        g.addColorStop(.55, "rgba(220,240,255,.25)");
+        g.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(-cw, -chh, cw * 2, chh * 2);
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+    ctx.restore();  // 横向缩放
+
+    // 落定冲击环
+    if (lk > 0 && lk < 1) {
+      const k = E.outQuint(lk);
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = (1 - k) * .7;
+      ctx.strokeStyle = "rgba(210,230,250,1)";
+      ctx.lineWidth = lp(5, .5, k);
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + chh * .1, lp(cw * .4, cw * 2.1, k), lp(cw * .12, cw * .7, k), 0, 0, 6.2832);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ================================================================
+//  ③ 碎片 · 聚合
+//     几何碎片从四周飞入，吸附成徽记；每片到位有一小下火花；最后整体亮一下
+// ================================================================
+class LogoShatter extends Logo {
+  init() {
+    const { cx, cy, S } = this;
+    this.shards = [];
+    const N = 26;
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * 6.2832 + rd(-.1, .1);
+      const rad = S * (.28 + Math.random() * .28);
+      const tx = cx + Math.cos(a) * rad, ty = cy + Math.sin(a) * rad;
+      const da = a + rd(2.2, 3.6), dd = rd(360, 900);
+      this.shards.push({
+        tx, ty,
+        x: tx + Math.cos(da) * dd, y: ty + Math.sin(da) * dd,
+        rot: rd(-6, 6), trot: rd(-.5, .5),
+        delay: rd(0, .5),
+        sz: S * rd(.07, .17),
+        sides: 3 + ((Math.random() * 3) | 0),
+        seed: Math.random() * 9,
+      });
+    }
+    this.parts = [];
+  }
+  emit(x, y, n) {
+    for (let i = 0; i < n * PSCALE; i++) {
+      const a = Math.random() * 6.2832;
+      this.parts.push({
+        x, y, vx: Math.cos(a) * rd(.6, 3), vy: Math.sin(a) * rd(.6, 3),
+        life: 0, max: rd(.25, .7), r: rd(.8, 2.4),
+        g: .004, drag: .93, turb: 0, seed: Math.random() * 9,
+      });
+    }
+  }
+  update(dt) {
+    this.stepP(dt);
+    for (const s of this.shards) {
+      const k = cl((this.t - s.delay) / .72);
+      if (k <= 0) continue;
+      const e = E.outQuint(k);
+      s.px = lp(s.x, s.tx, e);
+      s.py = lp(s.y, s.ty, e);
+      s.prot = lp(s.rot, s.trot, e);
+      s.arrived = k >= 1;
+      if (s.arrived && !s._fired) { s._fired = true; this.emit(s.tx, s.ty, 7); }
+    }
+  }
+  draw() {
+    const ctx = this.ctx, { W, H, cx, cy, S } = this, t = this.t;
+    ctx.clearRect(0, 0, W, H);
+    const bg = ctx.createRadialGradient(cx, cy, 4, cx, cy, S * 1.6);
+    bg.addColorStop(0, "rgba(10,50,48,.26)"); bg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    // 碎片
+    for (const s of this.shards) {
+      const k = cl((t - s.delay) / .72);
+      if (k <= 0) continue;
+      const e = E.outQuint(k);
+      const x = lp(s.x, s.tx, e), y = lp(s.y, s.ty, e);
+      const rot = lp(s.rot, s.trot, e);
+      const fade = k > .96 ? cl(1 - (k - .96) / .06) : 1;      // 到位后淡出，交给徽记
+      ctx.save();
+      ctx.translate(x, y); ctx.rotate(rot);
+      ctx.globalAlpha = cl(k * 2) * fade;
+      // 拖尾
+      if (k < .98) {
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = cl(k * 2) * .28 * (1 - k);
+        const tg = ctx.createLinearGradient(0, 0, -lp(-400, 0, e) * .1, -lp(-400, 0, e) * .1);
+        ctx.fillStyle = "rgba(74,208,200,.7)";
+        ctx.beginPath();
+        for (let i = 0; i < s.sides; i++) {
+          const a = i / s.sides * 6.2832;
+          const px = Math.cos(a) * s.sz * .5, py = Math.sin(a) * s.sz * .5;
+          i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+        }
+        ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+      // 碎片本体
+      ctx.beginPath();
+      for (let i = 0; i < s.sides; i++) {
+        const a = i / s.sides * 6.2832;
+        const px = Math.cos(a) * s.sz * .5, py = Math.sin(a) * s.sz * .5;
+        i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fillStyle = this.metal(ctx, -s.sz / 2, -s.sz / 2, s.sz / 2, s.sz / 2, "cyan");
+      ctx.fill();
+      ctx.lineWidth = Math.max(.6, S * .004);
+      ctx.strokeStyle = "rgba(230,255,250,.75)"; ctx.stroke();
+      ctx.restore();
+    }
+
+    // 徽记（所有碎片到位后显现）
+    const allK = cl((t - .5 - .72) / .55);
+    if (allK > 0) {
+      const k = E.outBack(allK);
+      const bs = S * .76;
+      ctx.save();
+      ctx.globalAlpha = cl(allK * 1.5);
+      // 外发光
+      this.bloom((c) => { badgePath(c, cx, cy, bs * 1.01); c.fillStyle = "rgba(74,208,200,.45)"; c.fill(); }, 1, 4);
+      // 本体
+      badgePath(ctx, cx, cy, bs);
+      ctx.fillStyle = this.metal(ctx, cx - bs * .5, cy - bs * .5, cx + bs * .5, cy + bs * .5, "cyan");
+      ctx.fill();
+      ctx.lineWidth = Math.max(1, S * .008);
+      ctx.strokeStyle = "rgba(235,255,252,.9)"; ctx.stroke();
+      // 内嵌
+      ctx.save();
+      badgePath(ctx, cx, cy, bs); ctx.clip();
+      hexPath(ctx, cx, cy - bs * .03, bs * .4);
+      ctx.fillStyle = "rgba(4,20,20,.62)"; ctx.fill();
+      ctx.strokeStyle = "rgba(200,255,248,.85)"; ctx.lineWidth = Math.max(1, S * .006); ctx.stroke();
+      // 内部扫描线（科技感）
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = cl(allK * 1.5) * .35;
+      const scanY = cy - bs * .5 + ((t * 40) % (bs));
+      const sg = ctx.createLinearGradient(0, scanY - bs * .06, 0, scanY + bs * .06);
+      sg.addColorStop(0, "rgba(120,255,240,0)"); sg.addColorStop(.5, "rgba(150,255,245,.8)"); sg.addColorStop(1, "rgba(120,255,240,0)");
+      ctx.fillStyle = sg; ctx.fillRect(cx - bs, scanY - bs * .06, bs * 2, bs * .12);
+      ctx.restore();
+      ctx.restore();
+
+      // 完成时的一下白闪
+      const fl = cl((t - .5 - .72 - .1) / .16);
+      if (fl > 0 && fl < 1) {
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = (1 - fl) * .35;
+        badgePath(ctx, cx, cy, bs * 1.1);
+        ctx.fillStyle = "rgba(200,255,250,1)"; ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // 粒子
+    ctx.globalCompositeOperation = "lighter";
+    for (const p of this.parts) {
+      const k = cl(p.life / p.max);
+      const a = (1 - k) * .9;
+      this.dot(p.x, p.y, p.r * 5, "rgba(140,255,245,1)", a * .45);
+      ctx.globalAlpha = a; ctx.fillStyle = "#eafffc";
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * .5, 0, 6.2832); ctx.fill();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+  }
+}
+
+// ================================================================
+//  ④ 法阵 · 唤醒
+//     同心法阵从暗到亮逐层浮现 + 双层反向旋转 + 符文点亮 + 中心徽记浮现
+// ================================================================
+class LogoRune extends Logo {
+  init() { this.color = "gold"; this.runes = []; }
+  draw() {
+    const ctx = this.ctx, { W, H, cx, cy, S } = this, t = this.t;
+    ctx.clearRect(0, 0, W, H);
+    const bg = ctx.createRadialGradient(cx, cy, 4, cx, cy, S * 1.7);
+    bg.addColorStop(0, "rgba(60,44,10,.24)"); bg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    const R1 = S * .74, R2 = S * .60, R3 = S * .38;
+    // 三层环，依次浮现
+    const layers = [
+      { r: R1, w: 2.2, dash: [16, 12], spd: 6, from: 0, alpha: .55, op: 1 },
+      { r: R2, w: 1.4, dash: [4, 10], spd: -9, from: .28, alpha: .45, op: 1 },
+      { r: R3, w: 2.6, dash: [26, 14], spd: 14, from: .5, alpha: .6, op: 1 },
+    ];
+    layers.forEach((L, i) => {
+      const k = cl((t - L.from) / .8);
+      if (k <= 0) return;
+      const e = E.outCubic(k);
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = L.alpha * e * (.75 + Math.sin(t * 1.2 + i) * .25);
+      ctx.strokeStyle = i === 1 ? "rgba(200,255,240,.9)" : "#e8c44a";
+      ctx.lineWidth = L.w;
+      if (ctx.setLineDash) ctx.setLineDash(L.dash.map(d => d * e));
+      ctx.lineDashOffset = t * L.spd;
+      ringPath(ctx, cx, cy, L.r * lp(.6, 1, e));
+      ctx.stroke();
+      if (ctx.setLineDash) ctx.setLineDash([]);
+      ctx.restore();
+    });
+
+    // 符文（环上的小方块，依次亮起）
+    const N = 18;
+    for (let i = 0; i < N; i++) {
+      const d = .5 + i * .035;
+      const k = cl((t - d) / .35);
+      if (k <= 0) continue;
+      const a = (i / N) * 6.2832 + t * .25;
+      const x = cx + Math.cos(a) * R1, y = cy + Math.sin(a) * R1;
+      ctx.save();
+      ctx.translate(x, y); ctx.rotate(a);
+      ctx.globalAlpha = k * (.5 + Math.sin(t * 3 + i) * .35);
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = "#ffe9a8";
+      ctx.fillRect(-3, -3, 6, 6);
+      if (i % 3 === 0) this.dot(x, y, S * .07, "rgba(255,230,150,1)", k * .35);
+      ctx.restore();
+    }
+
+    // 逆向第二圈符文（青色）
+    for (let i = 0; i < 12; i++) {
+      const d = .8 + i * .04;
+      const k = cl((t - d) / .35);
+      if (k <= 0) continue;
+      const a = -(i / 12) * 6.2832 - t * .4;
+      const x = cx + Math.cos(a) * R2, y = cy + Math.sin(a) * R2;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = k * .7;
+      ctx.fillStyle = "#b8fff2";
+      ctx.beginPath(); ctx.arc(x, y, 2.4, 0, 6.2832); ctx.fill();
+      ctx.restore();
+    }
+
+    // 中心徽记
+    const ck = cl((t - 1.0) / .85);
+    if (ck > 0) {
+      const k = E.outBack(ck);
+      const bs = S * .56;
+      ctx.save();
+      ctx.globalAlpha = cl(ck * 1.6);
+      // 向上射出的光柱
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = cl(ck * 1.6) * .22 * (1 - cl((t - 1.4) / 1.2));
+      const bgc = ctx.createLinearGradient(0, cy - S * .9, 0, cy + S * .2);
+      bgc.addColorStop(0, "rgba(255,235,170,0)");
+      bgc.addColorStop(1, "rgba(255,235,170,.8)");
+      ctx.fillStyle = bgc;
+      ctx.beginPath();
+      ctx.moveTo(cx - bs * .42, cy + bs * .3); ctx.lineTo(cx + bs * .42, cy + bs * .3);
+      ctx.lineTo(cx + bs * .16, cy - S * .95); ctx.lineTo(cx - bs * .16, cy - S * .95);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+
+      this.bloom((c) => { badgePath(c, cx, cy, bs); c.fillStyle = "rgba(232,196,74,.5)"; c.fill(); }, 1, 3);
+      badgePath(ctx, cx, cy, bs);
+      ctx.fillStyle = this.metal(ctx, cx - bs * .5, cy - bs * .5, cx + bs * .5, cy + bs * .5, "gold");
+      ctx.fill();
+      ctx.lineWidth = Math.max(1, S * .008);
+      ctx.strokeStyle = "rgba(255,248,214,.9)"; ctx.stroke();
+      ctx.save();
+      badgePath(ctx, cx, cy, bs); ctx.clip();
+      // 内部旋转的小法阵
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = cl(ck) * .8;
+      ctx.strokeStyle = "rgba(40,26,6,.85)";
+      ctx.lineWidth = 2;
+      ringPath(ctx, cx, cy, bs * .30); ctx.stroke();
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = t * .8 + i / 6 * 6.2832;
+        const x = cx + Math.cos(a) * bs * .30, y = cy + Math.sin(a) * bs * .30;
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      ctx.closePath(); ctx.stroke();
+      ctx.restore();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ================================================================
+//  ⑤ 冲击 · 定格
+//     中心一个光点 → 极速扩张成一圈冲击波 → 徽记在波前"被刻出来" → 余晖
+// ================================================================
+class LogoImpact extends Logo {
+  init() { this.parts = []; }
+  emit(x, y, n, spdMax, col) {
+    for (let i = 0; i < n * PSCALE; i++) {
+      const a = Math.random() * 6.2832;
+      const sp = rd(spdMax * .25, spdMax);
+      this.parts.push({
+        x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        life: 0, max: rd(.4, 1.1), r: rd(1, 3),
+        g: .002, drag: .9, turb: .006, seed: Math.random() * 9, col: col || "rgba(200,225,255,1)",
+      });
+    }
+  }
+  update(dt) {
+    this.stepP(dt);
+    // 冲击瞬间喷粒子
+    if (this.t > .42 && !this._burst) {
+      this._burst = true;
+      this.emit(this.cx, this.cy, 90, 9, "rgba(200,225,255,1)");
+    }
+    if (this.t > .5 && !this._burst2) { this._burst2 = true; this.emit(this.cx, this.cy, 40, 5, "rgba(255,235,180,1)"); }
+  }
+  draw() {
+    const ctx = this.ctx, { W, H, cx, cy, S } = this, t = this.t;
+    ctx.clearRect(0, 0, W, H);
+
+    // 冲击闪光（全屏一瞬间）
+    const fk = cl((t - .42) / .12);
+    if (fk > 0 && fk < 1) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = (1 - fk) * .5;
+      ctx.fillStyle = "#dce8ff"; ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    }
+
+    // 中心光点（.0 ~ .42 秒积蓄）
+    const ck = cl(t / .42);
+    if (ck < 1) {
+      const r = S * .02 + E.outCubic(ck) * S * .10;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      this.dot(cx, cy, r * 4, "rgba(160,200,255,1)", .5 + ck * .5);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.arc(cx, cy, r * .5, 0, 6.2832); ctx.fill();
+      ctx.restore();
+    }
+
+    // 冲击波（多圈，错开时间）
+    for (let i = 0; i < 3; i++) {
+      const st = cl((t - .42 - i * .12) / .75);
+      if (st <= 0 || st >= 1) continue;
+      const k = E.outQuint(st);
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const col = i === 0 ? "210,230,255" : (i === 1 ? "180,220,255" : "255,235,190");
+      ctx.globalAlpha = (1 - k) * (i === 0 ? .85 : .4);
+      ctx.strokeStyle = `rgba(${col},1)`;
+      ctx.lineWidth = lp(S * .03, .6, k);
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, lp(S * .05, S * 1.5, k), lp(S * .03, S * .95, k), 0, 0, 6.2832);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 徽记：被冲击波"刻"出来（描边先出现，再填色）
+    const mk = cl((t - .5) / .8);
+    if (mk > 0) {
+      const k = E.outCubic(mk);
+      const bs = S * .8;
+      ctx.save();
+      ctx.globalAlpha = cl(mk * 2.2);
+      // 描边先行（像被刻出来）
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = "rgba(230,242,255,.95)";
+      ctx.lineWidth = Math.max(1.5, S * .012);
+      ctx.setLineDash([bs * 3, bs * 3]);
+      ctx.lineDashOffset = bs * 3 * (1 - k);
+      badgePath(ctx, cx, cy, bs);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // 填色（稍晚）
+      const fk2 = cl((t - .68) / .6);
+      if (fk2 > 0) {
+        ctx.save();
+        ctx.globalAlpha = E.outCubic(fk2);
+        this.bloom((c) => { badgePath(c, cx, cy, bs); c.fillStyle = "rgba(190,215,255,.4)"; c.fill(); }, .9, 3);
+        badgePath(ctx, cx, cy, bs);
+        // 银蓝金属
+        const g = ctx.createLinearGradient(cx - bs * .5, cy - bs * .5, cx + bs * .5, cy + bs * .5);
+        g.addColorStop(0, "#f4f8ff"); g.addColorStop(.22, "#c8d8ee");
+        g.addColorStop(.5, "#5f7288");
+        g.addColorStop(.62, "#2a3648"); g.addColorStop(.82, "#a8c0dc"); g.addColorStop(1, "#7a90a8");
+        ctx.fillStyle = g; ctx.fill();
+        ctx.lineWidth = Math.max(1, S * .008);
+        ctx.strokeStyle = "rgba(235,245,255,.9)"; ctx.stroke();
+        ctx.save();
+        badgePath(ctx, cx, cy, bs); ctx.clip();
+        // 芯：发光的菱形
+        ctx.globalCompositeOperation = "lighter";
+        const pu = .55 + Math.sin(t * 2.4) * .25;
+        diamondPath(ctx, cx, cy - bs * .02, bs * .38);
+        ctx.fillStyle = "rgba(120,190,255,.5)"; ctx.fill();
+        ctx.strokeStyle = "rgba(220,240,255," + pu + ")";
+        ctx.lineWidth = Math.max(1, S * .007); ctx.stroke();
+        this.dot(cx, cy - bs * .02, bs * .3, "rgba(130,200,255,1)", pu * .5);
+        // 水平刻线
+        ctx.globalCompositeOperation = "source-over";
+        ctx.globalAlpha = E.outCubic(fk2) * .5;
+        ctx.strokeStyle = "rgba(180,205,235,.5)"; ctx.lineWidth = 1;
+        for (let i = 0; i < 3; i++) {
+          const yy = cy + bs * (.14 + i * .07);
+          ctx.beginPath(); ctx.moveTo(cx - bs * .3, yy); ctx.lineTo(cx + bs * .3, yy); ctx.stroke();
+        }
+        ctx.restore();
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+
+    // 粒子
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (const p of this.parts) {
+      const k = cl(p.life / p.max);
+      const a = (1 - k) * (1 - k);
+      if (a <= .01) continue;
+      this.dot(p.x, p.y, p.r * 5, p.col, a * .5);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * .5, 0, 6.2832); ctx.fill();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ================================================================
+//  ⑥ 龙纹 · 盘旋（最"高级"的一个：慢、有呼吸、有金属流动）
+//     三条弧线互相盘旋成形 + 中心一颗脉动的核 + 一圈细密刻度环
+// ================================================================
+class LogoDragon extends Logo {
+  init() { this.parts = []; this.rot = 0; }
+  draw() {
+    const ctx = this.ctx, { W, H, cx, cy, S } = this, t = this.t;
+    ctx.clearRect(0, 0, W, H);
+    const bg = ctx.createRadialGradient(cx, cy, 4, cx, cy, S * 1.8);
+    bg.addColorStop(0, "rgba(56,42,8,.28)"); bg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    // ① 细刻度环（最外圈，慢转）
+    const R0 = S * .92;
+    const k0 = cl(t / .9);
+    if (k0 > 0) {
+      ctx.save();
+      ctx.globalAlpha = E.outCubic(k0) * .38;
+      ctx.strokeStyle = "#c9a227";
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 90; i++) {
+        const a = (i / 90) * 6.2832 + t * .08;
+        const long = i % 5 === 0;
+        const r1 = R0, r2 = R0 - (long ? S * .05 : S * .022);
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+        ctx.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // ② 三条盘旋弧（每条绕着中心划一个渐开弧，交替明暗）
+    const arms = [
+      { r: S * .66, from: .25, len: .42, w: S * .035, col: "gold", dir: 1 },
+      { r: S * .54, from: .5, len: .38, w: S * .028, col: "cyan", dir: -1 },
+      { r: S * .42, from: .72, len: .34, w: S * .022, col: "gold", dir: 1 },
+    ];
+    arms.forEach((A, i) => {
+      const k = cl((t - A.from) / 1.0);
+      if (k <= 0) return;
+      const e = E.inOutQuint(k);
+      const a0 = -Math.PI / 2 + (A.dir > 0 ? 0 : Math.PI) + t * .18 * A.dir;
+      const span = 6.2832 * A.len * e;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = .85 * E.outCubic(k);
+      // 用多段画，做出"粗细渐变 + 金属色"
+      const N = 60;
+      for (let j = 0; j < N; j++) {
+        const p = j / N, p2 = (j + 1) / N;
+        const aa = a0 + span * p, ab = a0 + span * p2;
+        const w = A.w * Math.sin(p * Math.PI);      // 中间粗两头细
+        ctx.beginPath();
+        ctx.lineWidth = Math.max(.5, w);
+        const g = ctx.createLinearGradient(
+          cx + Math.cos(aa) * A.r, cy + Math.sin(aa) * A.r,
+          cx + Math.cos(ab) * A.r, cy + Math.sin(ab) * A.r);
+        if (A.col === "gold") {
+          g.addColorStop(0, "rgba(255,243,196," + (.25 + p * .75) + ")");
+          g.addColorStop(1, "rgba(200,150,30," + (.25 + p * .75) + ")");
+        } else {
+          g.addColorStop(0, "rgba(180,255,240," + (.2 + p * .8) + ")");
+          g.addColorStop(1, "rgba(74,208,200," + (.2 + p * .8) + ")");
+        }
+        ctx.strokeStyle = g;
+        ctx.beginPath();
+        ctx.arc(cx, cy, A.r, aa, ab + .01);
+        ctx.stroke();
+        // 弧头上的亮点
+        if (j === N - 1) {
+          const hx = cx + Math.cos(ab) * A.r, hy = cy + Math.sin(ab) * A.r;
+          this.dot(hx, hy, S * .12, A.col === "gold" ? "rgba(255,240,190,1)" : "rgba(150,255,245,1)", .55);
+        }
+      }
+      ctx.restore();
+    });
+
+    // ③ 中心核（脉动）
+    const ck = cl((t - .9) / .7);
+    if (ck > 0) {
+      const k = E.outBack(ck);
+      const bs = S * .34 * lp(.4, 1, k);
+      const pu = .5 + Math.sin(t * 1.9) * .5;
+      ctx.save();
+      ctx.globalAlpha = cl(ck * 1.6);
+      // 光晕
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      this.dot(cx, cy, bs * (1.7 + pu * .5), "rgba(255,225,140,1)", (.28 + pu * .2) * cl(ck * 1.6));
+      ctx.restore();
+      // 核本体
+      diamondPath(ctx, cx, cy, bs);
+      ctx.fillStyle = this.metal(ctx, cx - bs * .5, cy - bs * .5, cx + bs * .5, cy + bs * .5, "gold");
+      ctx.fill();
+      ctx.lineWidth = Math.max(1, S * .006);
+      ctx.strokeStyle = "rgba(255,250,225,.95)"; ctx.stroke();
+      // 核内的十字纹
+      ctx.save();
+      diamondPath(ctx, cx, cy, bs); ctx.clip();
+      ctx.globalAlpha = cl(ck * 1.6) * .6;
+      ctx.strokeStyle = "rgba(40,26,6,.9)"; ctx.lineWidth = Math.max(1, S * .005);
+      ctx.beginPath(); ctx.moveTo(cx - bs, cy); ctx.lineTo(cx + bs, cy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx, cy - bs); ctx.lineTo(cx, cy + bs); ctx.stroke();
+      ctx.restore();
+      ctx.restore();
+    }
+
+    // ④ 漂浮的金尘
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < 26; i++) {
+      const seed = i * 7.31;
+      const a = seed + t * (.12 + (i % 5) * .03);
+      const rr = S * (.5 + ((i * 37) % 100) / 100 * .8);
+      const x = cx + Math.cos(a) * rr;
+      const y = cy + Math.sin(a * .7) * rr * .35 + Math.sin(t * .8 + seed) * 6;
+      const al = (.18 + Math.sin(t * 1.4 + seed) * .14) * cl((t - 1) / 1);
+      this.dot(x, y, 3 + (i % 3), "rgba(255,235,170,1)", al);
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ================================================================
+//  装配 + 主循环
+// ================================================================
+const LIST = [
+  { no: "01", nm: "环 · 绽放", ds: "金属环描出 → 环上扫过一道光 → 徽记从环心长出 → 呼吸脉冲。最经典的 game logo 节奏", fx: LogoTorus },
+  { no: "02", nm: "卡 · 展开", ds: "卡从侧面旋转展开成正面（3D 感）→ 落定冲击环 → 高光扫过卡面。最贴合卡牌主题", fx: LogoCard },
+  { no: "03", nm: "碎片 · 聚合", ds: "几何碎片从四周飞入吸附成徽记，每片到位爆一小下火花 → 整体白闪", fx: LogoShatter },
+  { no: "04", nm: "法阵 · 唤醒", ds: "三层法阵逐层浮现 + 双层反向旋转 + 18 个符文依次点亮 + 光柱 + 中心徽记", fx: LogoRune },
+  { no: "05", nm: "冲击 · 定格", ds: "中心光点积蓄 → 极速扩张冲击波 → 徽记被\"刻\"出来（描边先行再填色）", fx: LogoImpact },
+  { no: "06", nm: "龙纹 · 盘旋", ds: "90 格细刻度环慢转 + 三条盘旋弧长出 + 中心脉动的核 + 漂浮金尘。最慢、最有呼吸感", fx: LogoDragon },
+];
+
+const grid = document.getElementById("grid");
+const cells = [];
+LIST.forEach((item, i) => {
+  const c = document.createElement("div");
+  c.className = "cell";
+  c.innerHTML = `<div class="meta"><div class="no">${item.no}</div><div class="nm">${item.nm}</div><div class="ds">${item.ds}</div></div>
+    <button class="rp">重播</button><div class="pf"></div>`;
+  grid.appendChild(c);
+  const rec = { cell: c, item, fx: null, pf: c.querySelector(".pf") };
+  cells.push(rec);
+  c.querySelector(".rp").onclick = () => start(rec);
+  rec.loop = setInterval(() => start(rec), 5200);
+});
+
+function start(rec) {
+  if (rec.fx) rec.fx.destroy();
+  try { rec.fx = new rec.item.fx(rec.cell); } catch (e) { rec.pf.textContent = "⚠️ " + e.message; console.error(e); }
+}
+
+let last = performance.now(), fa = 0, fn = 0, ft = 0;
+function loop(now) {
+  let dt = (now - last) / 1000; last = now;
+  if (dt > .1) dt = .1;
+  dt *= PSPEED;
+  fa += dt / PSPEED; fn++; ft += dt;
+  if (ft > .5) { document.getElementById("fps").textContent = "FPS " + Math.round(fn / fa); fa = 0; fn = 0; ft = 0; }
+  for (const rec of cells) {
+    const f = rec.fx;
+    if (!f || f.dead) continue;
+    const r = rec.cell.getBoundingClientRect();
+    if (r.bottom < -80 || r.top > innerHeight + 80) continue;
+    const t0 = performance.now();
+    f.t += dt;
+    try { f.update && f.update(dt); f.draw(); } catch (e) { rec.pf.textContent = "⚠️ " + e.message; }
+    const cost = performance.now() - t0;
+    rec.pf.textContent = "粒子 " + (f.parts ? f.parts.length : 0) + "　" + cost.toFixed(1) + "ms";
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".spd").forEach(x => x.classList.remove("on"));
+  b.classList.add("on"); PSPEED = Number(b.dataset.s);
+});
+const pc = document.getElementById("pc"), pcL = document.getElementById("pcLab");
+pc.onchange = () => cells.forEach((c, i) => setTimeout(() => start(c), i * 130));
+pc.oninput = () => { PSCALE = Number(pc.value) / 100; pcL.textContent = pc.value + "%"; };
+document.getElementById("all").onclick = () => cells.forEach((c, i) => setTimeout(() => start(c), i * 200));
+let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => cells.forEach(c => start(c)), 320); });
+cells.forEach((c, i) => setTimeout(() => start(c), 300 + i * 300));
+</script>
+</body>
+</html>

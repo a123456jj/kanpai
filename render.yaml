@@ -1,0 +1,17 @@
+# Render 部署配置（放到仓库根目录，Render 会自动识别）
+#   用法：在 Render 上 New + → Blueprint → 选这个仓库，它会按这个文件自动建服务
+services:
+  - type: web
+    name: kanpai-card-game
+    runtime: node
+    plan: free
+    region: singapore          # 离中国最近的节点
+    buildCommand: ""           # 零依赖，不需要 build
+    startCommand: node server.js
+    envVars:
+      - key: NO_OPEN           # 云上不要自动开浏览器
+        value: "1"
+      - key: NODE_ENV
+        value: production
+    healthCheckPath: /info     # 用 /info 当健康检查（返回 JSON 状态）
+    autoDeploy: true

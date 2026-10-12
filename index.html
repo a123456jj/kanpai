@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>卡牌游戏 v13</title>
+<link rel="stylesheet" href="fx-panel.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 10px; background: #1a1a1f; color: #e8e8ec;
+         font-family: "Microsoft YaHei", sans-serif; font-size: 14px; }
+
+  /* ⚠️ 这两个是演出层：fx.js 把所有动画元素放进 #fx，闪光放进 #fx-flash。
+        没有它们，任何动画都不会显示（之前就是漏了这两个）。 */
+  #fx { position: fixed; inset: 0; pointer-events: none; z-index: 9995; }
+  #fx-flash { position: fixed; inset: 0; pointer-events: none; z-index: 9990; opacity: 0; }
+  #fx *, #fx-flash * { pointer-events: none !important; }
+  #page { position: relative; z-index: 10; }
+
+  h2 { margin: 6px 0; font-size: 16px; }
+  .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  button { background: #3a3a48; color: #e8e8ec; border: 1px solid #55556a; padding: 6px 12px;
+           border-radius: 4px; cursor: pointer; font-size: 13px; }
+  button:hover { background: #4a4a5c; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { background: #2d6cdf; border-color: #2d6cdf; }
+  button.danger { background: #b33; border-color: #b33; }
+  button.who { background: #2a4a2a; border-color: #3a6a3a; font-weight: bold; }
+  button.who.on { background: #3a8a3a; border-color: #5aca5a; }
+
+  .panel { border: 1px solid #33334a; border-radius: 6px; padding: 8px; margin-bottom: 8px;
+           background: #22222c; overflow: hidden; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .side { flex: 1; min-width: 320px; }
+  .stat { display: inline-block; margin-right: 14px; }
+  .stat b { color: #7fd; }
+  .stat.hp b { color: #f88; }
+
+  .hand { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .card { width: 108px; min-height: 92px; padding: 6px; border-radius: 5px; border: 1px solid #44445e;
+          background: #2c2c3a; cursor: pointer; position: relative; transition: .12s; }
+  .card:hover { border-color: #7fd; transform: translateY(-3px); }
+  .card.dis { opacity: .35; cursor: not-allowed; }
+  .card.selected { border-color: #7fd; background: #1e4a6a; box-shadow: 0 0 10px #2d8cdf; }
+  /* ⚠️ 类名要和 client.js 里的一致（ccost/cname/ctext），
+        之前写成 c/n/t，导致卡牌上的费用/名字/说明全都没样式 */
+  .card .ccost { position: absolute; right: 5px; top: 3px; font-size: 11px; color: #fd6; font-weight: bold; }
+  .card .cname { font-weight: bold; font-size: 13px; margin-bottom: 3px; padding-right: 16px; }
+  .card .ctext { font-size: 11px; color: #aaa; line-height: 1.35; }
+  /* 选牌模式（转转/洗牌/弃牌）下，能点的牌更明显 */
+  #meHand .card:not(.dis) { cursor: pointer; }
+  #meHand .card:not(.dis):hover { border-color: #7fd; }
+  .card.k-attack { border-left: 3px solid #e04a4a; }
+  .card.k-block { border-left: 3px solid #5aa0e0; }
+  .card.k-heal { border-left: 3px solid #4ad06a; }
+  .card.k-economy { border-left: 3px solid #ffd166; }
+  .card.k-status { border-left: 3px solid #a55cff; }
+  .card.k-unit { border-left: 3px solid #ff8c42; }
+  .card.k-special { border-left: 3px solid #8888a0; }
+
+  #log { height: 190px; overflow-y: auto; font-size: 12px; line-height: 1.6; color: #bbb;
+         background: #101018; padding: 6px; border-radius: 4px; }
+  #prompt { min-height: 40px; padding: 8px; background: #1e2a3a; border: 1px solid #2d4a6a;
+            border-radius: 5px; margin-bottom: 8px; }
+  #prompt h3 { margin: 0 0 6px; font-size: 14px; color: #7fd; }
+
+  #overlay { position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 100000;
+             display: none; align-items: center; justify-content: center; flex-direction: column; }
+  #overlay.show { display: flex; }
+  #overlay h1 { font-size: 42px; margin: 0 0 16px; }
+
+  /* ============ 手机适配 ============ */
+  @media (max-width: 700px) {
+    body { padding: 6px; font-size: 13px; }
+    .row { flex-direction: column; gap: 6px; }
+    .side { min-width: 0; width: 100%; }
+    .panel { padding: 6px; margin-bottom: 6px; }
+    .hand { gap: 4px; }
+    .card { width: calc(33.33% - 4px); min-height: 76px; padding: 5px; }
+    .card .cname { font-size: 12px; }
+    .card .ctext { font-size: 10px; }
+    button { padding: 8px 10px; font-size: 13px; }
+    h2 { font-size: 14px; }
+    #log { height: 110px; font-size: 11px; }
+    #dbgBox { display: none; }
+    #fxDiag { height: 70px; font-size: 10px; }
+    .stat { margin-right: 10px; }
+  }
+  @media (min-width: 701px) and (max-width: 1000px) {
+    .side { min-width: 260px; }
+    .card { width: 96px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <b style="color:#fd6;font-size:17px">卡牌游戏</b>
+  <span id="conn" style="font-size:12px;color:#888">未连接</span>
+  <span id="mode" style="font-size:12px;color:#888"></span>
+  <span id="fxQuality" style="font-size:12px;color:#6a6"></span>
+  <span id="cheatFlag" style="font-size:12px;color:#f66;font-weight:bold;display:none">😈 作弊已开</span>
+  <span style="flex:1"></span>
+  <button class="who" id="btnAsP1">我是玩家1</button>
+  <button class="who" id="btnAsP2">我是玩家2</button>
+  <button class="who" id="btnAsDual">双控模式</button>
+  <span style="color:#444">|</span>
+  <button class="who" id="btnDummyMode" style="border-color:#c09a4a;color:#fed" title="对面是个不会还手的 100 血木桩，用来测动画">🎯 木桩模式</button>
+  <button class="who" id="btnCheatMode" style="border-color:#a04a4a;color:#fdd" title="开启作弊面板：强制核弹、回血、加能量…">😈 作弊</button>
+  <span style="color:#444">|</span>
+  <button class="primary" id="btnStart">开始新游戏</button>
+  <button id="btnEndTurn">结束回合</button>
+  <button class="danger" id="btnReset">重置</button>
+</div>
+
+<div id="page">
+  <div id="prompt"></div>
+
+  <div class="row">
+    <div class="side panel" id="oppPanel">
+      <h2 id="oppTitle">对手</h2>
+      <div>
+        <span class="stat hp">❤ <b id="oppHp">-</b></span>
+        <span class="stat">⚡ <b id="oppEn">-</b></span>
+        <span class="stat">🃏 <b id="oppHandCount">-</b></span>
+        <span class="stat">📚 <b id="oppDeck">-</b></span>
+      </div>
+      <div id="oppStatus" style="font-size:12px;color:#fd6;margin-top:4px"></div>
+      <div id="oppInfo" style="font-size:12px;color:#999;margin-top:4px"></div>
+      <div id="oppHand" class="hand"></div>
+    </div>
+
+    <div class="side panel" id="mePanel">
+      <h2 id="meTitle">我</h2>
+      <div>
+        <span class="stat hp">❤ <b id="meHp">-</b></span>
+        <span class="stat">⚡ <b id="meEn">-</b></span>
+        <span class="stat">🃏 <b id="meHandCount">-</b></span>
+        <span class="stat">📚 <b id="meDeck">-</b></span>
+      </div>
+      <div id="meStatus" style="font-size:12px;color:#fd6;margin-top:4px"></div>
+      <div id="meInfo"></div>
+      <div id="meHand" class="hand"></div>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>日志 <span style="font-size:11px;color:#666">（右边是调试信息，卡住的时候看这里）</span></h2>
+  <div style="display:flex;gap:10px">
+    <div id="log" style="flex:2"></div>
+    <pre id="dbgBox" style="flex:1;height:190px;overflow-y:auto;font-size:11px;line-height:1.5;background:#101018;color:#8c8;padding:6px;border-radius:4px;margin:0;white-space:pre-wrap"></pre>
+  </div>
+  <h2 style="margin-top:10px">🎬 演出诊断 <span style="font-size:11px;color:#666">（出牌后这里应该出现 "新的 N 条"）</span></h2>
+  <div style="margin-bottom:6px">
+    <button id="btnFxCannon" style="background:#2d6cdf;color:#fff;border:0;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:13px">🧪 测试动画（打一发核弹）</button>
+    <button id="btnFxCheck" style="background:#3a3a48;color:#fff;border:0;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:13px;margin-left:6px">🔍 检查环境</button>
+  </div>
+  <pre id="fxDiag" style="height:130px;overflow-y:auto;font-size:11px;line-height:1.5;background:#101018;color:#fc6;padding:6px;border-radius:4px;margin:0;white-space:pre-wrap"></pre>
+</div>
+
+<!-- 结算画面 -->
+<div id="overlay">
+  <h1 id="resultText">胜利！</h1>
+  <div id="resultSub" style="color:#aaa;margin-bottom:20px"></div>
+  <button class="primary" id="btnAgain" style="padding:10px 22px;font-size:15px">再来一局</button>
+  <button id="btnCloseResult" style="padding:10px 22px;font-size:15px;margin-top:8px">关闭</button>
+</div>
+
+<!-- 🎬 演出层（fx.js 需要这两个容器，缺了动画就全都不显示） -->
+<div id="fx-flash"></div>
+<div id="fx"></div>
+
+<script src="fx.js?v=20"></script>
+<script src="client.js?v=31"></script>
+</body>
+</html>

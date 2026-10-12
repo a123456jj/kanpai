@@ -1,0 +1,37 @@
+# 云服务器部署用：这些文件不用上传（GitHub 用）
+# 云端只需要跑 node server.js，其它测试/demo 可留可删
+
+# 隧道工具（54MB，本地用的，云上不需要）
+cloudflared.exe
+*.exe
+
+# 本地启动脚本
+*.bat
+当前网址.txt
+
+# 测试脚本（留着也无害，但不上传更干净）
+test.js
+testclient.js
+testspectator.js
+testdiscard.js
+testdiscard2.js
+checkall.js
+checkinstall.js
+selfcheck.js
+fulltest.js
+autoplay.js
+
+# 调试/试用页（demo.html 和 logopick 建议保留，可以给朋友看演出）
+unittest.html
+test-click.html
+chickenpick.html
+bowlpick.html
+bombpick.html
+imgup.html
+client.html
+
+# 系统
+.DS_Store
+Thumbs.db
+node_modules/
+npm-debug.log*
