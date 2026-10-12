@@ -125,14 +125,22 @@ PORT=8080 node server.js
 ## 六、测试
 
 ```bash
-node test.js          # 规则引擎 261 项
+node test.js          # 规则引擎 65 项
+node testedge.js      # 边界回归 30 项（防"卡死类"bug 复现）
 node checkall.js      # 60 张牌全量审计
 node testclient.js    # 客户端逻辑 14 项
 node testspectator.js # 观战 11 项
 node testdiscard2.js  # 弃牌流程 31 项
 node checkinstall.js  # 演出是否接进正式游戏
-node selfcheck.js     # 全面自检（HTTP + WebSocket + 资源）
+node selfcheck.js     # 全面自检（HTTP + WebSocket + 资源 + 隧道）
 ```
+
+**`testedge.js` 是防退化用的**，它守着一类曾经把对局彻底卡死的 bug：
+
+> 待决策的"决策人"不是当前回合玩家时（定时炸弹 / 弃牌 / 格挡 / 斩杀），
+> 结算必须用 `pending.player` / `pending.defender`，**绝不能用 `g.current`**。
+> 踩过这个坑：弃牌时扣错人的手牌 → 手牌数降不下来 → pending 又挂上
+> → 死循环（实测卡死 147 回合，双方一张牌都出不来）。
 
 ---
 

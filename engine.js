@@ -1044,20 +1044,38 @@ function execEffect(g, idx, card, opts) {
 function resolveMulti(g) {
   const pd = g.pending;
   if (!pd || pd.kind !== "multi") return;
+  // ⚠️ 兼容：after 里可能没带 attacker/defender（老代码就漏了这两个字段）
+  //    → 缺了会变成 g.players[undefined] → calcDamage 直接崩
+  const attacker = pd.attacker !== undefined ? pd.attacker : pd.attackerIdx;
+  const defender = pd.defender !== undefined ? pd.defender : pd.defenderIdx;
   if (pd.done >= pd.hits) {
+    g.pending = null;
+    return;
+  }
+  if (attacker === undefined || defender === undefined) {
+    console.log("[多段攻击] ⚠️ pending 里没有 attacker/defender，无法继续 → 直接结束");
     g.pending = null;
     return;
   }
   // 请求防守方对第 done+1 段做格挡决策
   g.pending = {
     kind: "block",
-    attacker: pd.attacker,
-    defender: pd.defender,
-    amount: calcDamage(g, g.players[pd.defender], pd.perHit),
+    attacker: attacker,
+    defender: defender,
+    amount: calcDamage(g, g.players[defender], pd.perHit, g.players[attacker]),
     reason: `${pd.reason}（第 ${pd.done + 1} 段）`,
-    after: { kind: "multi", hits: pd.hits, done: pd.done + 1, perHit: pd.perHit, reason: pd.reason },
-    attackerIdx: pd.attacker,
-    defenderIdx: pd.defender,
+    // ⚠️ after 里**必须**带上 attacker/defender，否则下一段没法算伤害（会崩）
+    after: {
+      kind: "multi",
+      attacker: attacker,
+      defender: defender,
+      hits: pd.hits,
+      done: pd.done + 1,
+      perHit: pd.perHit,
+      reason: pd.reason,
+    },
+    attackerIdx: attacker,
+    defenderIdx: defender,
   };
 }
 
@@ -1117,8 +1135,18 @@ function finishTurn(g) {
 }
 
 // 玩家选完要弃的牌之后调用
-function resolveDiscardToLimit(g, names) {
-  const p = g.players[g.current];
+// 玩家选完"要弃哪几张"之后调用
+//   ⚠️ 必须用 pending 里记的 player，**不能用 g.current**
+//      之前用 g.current → 万一回合已经换人了，就会从错误的人手里扣牌，
+//      手牌数没降下来 → pending 又被挂上 → **永久死循环**（实测会卡死）
+function resolveDiscardToLimit(g, names, whoIdx) {
+  let who = whoIdx;
+  if (who === undefined || who === null) {
+    who = (g.pending && g.pending.kind === "discard_to_limit" && g.pending.player !== undefined)
+      ? g.pending.player : g.current;
+  }
+  const p = g.players[who];
+  if (!p) { g.pending = null; return; }
   let n = 0;
   for (const name of (names || [])) {
     const i = p.hand.indexOf(name);
@@ -1131,7 +1159,9 @@ function resolveDiscardToLimit(g, names) {
     if (g.phase === "ended") { g.pending = null; return; }
   }
   g.pending = null;
-  finishTurn(g);
+  // ⚠️ 只有"弃牌的人就是当前回合的人"时才推回合
+  //    否则会出现"把回合推给错误的人"（另一个死循环来源）
+  if (who === g.current) finishTurn(g);
 }
 
 // 玩家选完"定时炸弹"怎么处理之后调用

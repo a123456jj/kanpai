@@ -321,6 +321,88 @@ function passArgFor(kind) {
     default: return {};                            // 其余空参数＝不挡/不选/不用
   }
 }
+// 🔄 自动放行"不需要玩家做选择"的待决策
+//    execute：斩杀的"直接杀"判定 → 服务器立刻转成格挡窗口（防守方才需要选择）
+//    multi  ：苦无等多段攻击 → 服务器自己一段一段打完
+//    ⚠️ 这两个以前没人处理 → 客户端弹"等待对方处理…"，然后**永远卡住**
+function autoAdvancePending() {
+  if (!game) return false;
+  let did = false, guard = 0;
+  while (game.pending && guard++ < 30) {
+    const kind = game.pending.kind;
+    if (kind !== "execute" && kind !== "multi") break;
+    const pd = game.pending;
+    console.log("[自动放行] 处理待决策：" + kind);
+    let ok = false;
+    try {
+      ok = resolvePending({}, pd);
+    } catch (e) {
+      console.log("[自动放行] 出错: " + e.message + " → 强制清掉");
+      game.pending = null;
+      break;
+    }
+    if (!ok) {
+      console.log("[自动放行] 被拒绝 → 强制清掉，避免卡死");
+      game.pending = null;
+    }
+    did = true;
+  }
+  return did;
+}
+
+// ============================================================
+//  ⏱ 待决策超时兜底
+//    场景：该玩家断线了 / 关了页面 / 卡在选牌界面 → 谁也不发 resolve
+//    → 对局会**永久卡住**（另一边的玩家干等着）
+//    处理：等 45 秒还没人决定，就帮他选"最省事"的答案（服务器算）
+//          · 格挡/弹簧/刀 → 不用
+//          · 弃牌 → 自动丢最没用的那几张
+//          · 黑洞/战利/替罪羊/复制 → 随机或跳过
+//    只对"真人"生效；木桩和 AI 有自己的自动决策
+// ============================================================
+let pendingSince = 0;
+let pendingKindSeen = null;
+const PENDING_TIMEOUT_MS = 45000;
+
+function autoResolveStuckPending() {
+  if (!game || !game.pending) { pendingSince = 0; pendingKindSeen = null; return false; }
+  const kind = game.pending.kind;
+  if (kind !== pendingKindSeen) { pendingKindSeen = kind; pendingSince = Date.now(); return false; }
+  const owner = pendingOwner(game.pending);
+  if (isDummyIdx(owner) || isAiSeat(owner)) { pendingSince = Date.now(); return false; }  // 它们自己会决定
+  if (Date.now() - pendingSince < PENDING_TIMEOUT_MS) return false;
+
+  console.log(`[超时] 待决策【${kind}】等了 ${Math.round(PENDING_TIMEOUT_MS / 1000)} 秒没人决定 → 服务器代选`);
+  pendingSince = Date.now();
+  const pd = game.pending;
+  let msg = {};
+  try {
+    if (kind === "discard_to_limit") {
+      // 自动丢最"没用"的几张（按 ai.js 的估值）
+      const p = game.players[pd.player];
+      const sorted = p.hand.slice().sort((a, b) => AI.cardKeepValue(CARD_BY_NAME[a]) - AI.cardKeepValue(CARD_BY_NAME[b]));
+      msg = { discard: sorted.slice(0, pd.count) };
+    } else {
+      msg = passArgFor(kind);
+    }
+    const ok = resolvePending(msg, pd);
+    if (!ok) {
+      console.log("[超时] 自动决策被拒 → 强制清掉，避免卡死");
+      if (kind === "block") {
+        E.applyDamage(game, game.players[pd.attacker], game.players[pd.defender], pd.amount, pd.reason);
+        if (pd.statusAfter) for (const ev of pd.statusAfter) E.fxPush(game, ev);
+      }
+      game.pending = null;
+    }
+    game.log.push("⏱ 有一方超时没决定，服务器自动替他选了（" + kind + "）");
+  } catch (e) {
+    console.log("[超时] 出错: " + e.message + " → 强制清掉");
+    game.pending = null;
+  }
+  broadcast();
+  return true;
+}
+
 function autoResolveDummyPending() {
   if (!game) return false;
   let did = false, guard = 0;
@@ -441,6 +523,11 @@ function broadcast() {
   }
   // 🎯 木桩模式：轮到木桩就自动跳过，把回合还给玩家
   try { ensurePlayerTurn(); } catch (e) { console.log("[木桩] 跳过回合出错: " + e.message); }
+  // 🔄 先自动放行"不需要玩家选择"的待决策（斩杀 → 转成格挡窗口；苦无连击 → 继续打）
+  //    ⚠️ 这两个如果不自动放行，客户端没有对应 UI，会**永久卡死**在"等待对方处理…"
+  try { autoAdvancePending(); } catch (e) { console.log("[自动放行] 出错: " + e.message); }
+  // ⏱ 待决策超时兜底：有人断线/关了页面 → 45 秒后服务器代他决定（否则对局永久卡住）
+  try { autoResolveStuckPending(); } catch (e) { console.log("[超时兜底] 出错: " + e.message); }
   // 🎯 木桩模式：所有"该木桩决策"的窗口自动选"不用"（否则会卡住不动）
   try { autoResolveDummyPending(); } catch (e) { console.log("[木桩] 自动决策出错: " + e.message); }
   try { ensurePlayerTurn(); } catch (e) { }  for (const c of clients) {
@@ -650,6 +737,7 @@ function handleMessage(c, raw) {
     // 🎯 木桩专用：给我一副"全是演出牌"的手牌（方便一张张试动画）
     if (act === "fxhand") {
       const me2 = game.players[idx];
+      // 发"好看的那批特效牌"（做动画验收时用，手牌不会太乱）
       const fxCards = ["一拳", "闪电", "核弹", "末日", "黑洞", "天崩地裂", "毒鸡汤",
         "八音盒", "末影龙", "皮卡", "斩杀", "狙击枪", "雪球", "血刃", "硫酸",
         "苦肉计", "幸运儿", "医疗包", "水晶盾", "盾反", "定时炸弹", "断头台", "转转", "土豆地雷"];
@@ -657,8 +745,29 @@ function handleMessage(c, raw) {
       me2.energy = 99;
       me2.maxHand = 40;                 // 放开手牌上限
       me2.handLimitThisTurn = 40;
-      me2.hand = fxCards.slice();
-      game.log.push("🎬 已发给你一副【演出测试牌组】—— 20 张全是特效牌，能量 99，手牌上限放开");
+      // ⚠️ 如果手上已经有这些牌了，就**追加**而不是覆盖
+      //    （否则反复点这个按钮永远只拿到同一批牌，测不到别的牌）
+      const have = new Set(me2.hand);
+      const add = fxCards.filter((n) => !have.has(n));
+      if (add.length) me2.hand = me2.hand.concat(add);
+      if (me2.hand.length > 60) me2.hand = me2.hand.slice(0, 60);
+      game.log.push("🎬 已发给你一副【演出测试牌组】（+" + add.length + " 张）—— 能量 99，手牌上限放开");
+      broadcast();
+      return;
+    }
+
+    // 🧪 作弊：把**全部 60 张牌**都塞进手里（测所有牌用）
+    if (act === "allcards") {
+      const me2 = game.players[idx];
+      const all = CARDS.map((c) => c.name);
+      me2.maxEnergy = 99;
+      me2.energy = 99;
+      me2.maxHand = 99;
+      me2.handLimitThisTurn = 99;
+      const have = new Set(me2.hand);
+      const add = all.filter((n) => !have.has(n));
+      me2.hand = me2.hand.concat(add);
+      game.log.push("🧪 已把全部 " + all.length + " 张牌塞进你手里（+" + add.length + " 张）");
       broadcast();
       return;
     }
@@ -1009,21 +1118,22 @@ function resolvePending(msg, pd) {
     }
     case "discard_to_limit": {
       const names = msg.discard || [];
-      console.log(`[弃牌] 玩家${pd.player + 1} 要弃 ${pd.count} 张，收到 ${names.length} 张: ${JSON.stringify(names)}`);
-      console.log(`[弃牌] 他的手牌: ${JSON.stringify(game.players[pd.player].hand)}`);
+      // ⚠️ 日志不要打印玩家的手牌内容：
+      //    ① 那是隐藏信息，日志可能被别人看到
+      //    ② 客户端反复发错参数时会刷爆日志
       if (!Array.isArray(names) || names.length !== pd.count) {
-        console.log(`[弃牌] ❌ 张数不对（要 ${pd.count} 张，收到 ${names.length} 张）`);
+        console.log(`[弃牌] ❌ 张数不对（要 ${pd.count} 张，收到 ${(names || []).length} 张）`);
         return false;
       }
       // 检查这些牌是不是真的在他手上
       const handCopy = game.players[pd.player].hand.slice();
       for (const n of names) {
         const i = handCopy.indexOf(n);
-        if (i < 0) { console.log(`[弃牌] ❌ 他手上没有【${n}】`); return false; }
+        if (i < 0) { console.log(`[弃牌] ❌ 他手上没有这张牌`); return false; }
         handCopy.splice(i, 1);
       }
-      E.resolveDiscardToLimit(game, names);
-      console.log(`[弃牌] ✅ 弃牌成功，之后 pending = ${game.pending ? game.pending.kind : "无"}`);
+      E.resolveDiscardToLimit(game, names, pd.player);
+      console.log(`[弃牌] ✅ 玩家${pd.player + 1} 弃了 ${names.length} 张，之后 pending = ${game.pending ? game.pending.kind : "无"}`);
       return true;
     }
     case "timebomb": {
@@ -1249,6 +1359,25 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ ok: false, error: e.message }));
       }
     });
+    return;
+  }
+  // 🩺 调试用（只在启动时加 --debug 才开）：直接看服务器内部的 pending
+  //    ⚠️ 会暴露手牌数等信息 → **默认关闭**，不给朋友玩的版本用
+  if (req.url === "/pending" && process.argv.indexOf("--debug") >= 0) {
+    const body = game ? {
+      阶段: game.phase,
+      回合: game.turn,
+      当前行动方: game.current,
+      待决策: game.pending || null,
+      待决策归属: game.pending ? pendingOwner(game.pending) : null,
+      玩家: game.players.map((p, i) => ({
+        序号: i + 1, 名字: p.name, 血量: p.hp, 能量: p.energy,
+        手牌数: p.hand.length, 手牌上限: p.handLimitThisTurn, 牌库数: p.deck.length,
+        能出牌: p.canPlayThisTurn, 状态: p.statuses.map((s) => s.type),
+      })),
+    } : null;
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify(body, null, 2));
     return;
   }
   if (req.url === "/info") {    const os = require("os");

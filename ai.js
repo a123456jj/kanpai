@@ -14,6 +14,9 @@
 
 // ---------- 牌的"参考价值"（只看牌本身，不看局面）----------
 function cardBaseValue(card) {
+  // ⚠️ 必须能接受 undefined / null：
+  //    服务器在"超时兜底、自动弃牌"时会对整副手牌排序，
+  //    而手牌里可能有卡表里没有的牌（比如信塞进去的"空白牌"）
   if (!card) return 0;
   const cost = card.cost === "X" ? 4 : (card.cost === "X+1" ? 4 : (Number(card.cost) || 0));
   const v = typeof card.value === "number" ? card.value : 0;
@@ -49,6 +52,43 @@ function cardBaseValue(card) {
   if (/欠钱|替罪羊|复制|信|弹簧/.test(card.name)) s += 1.4;
   // 费用惩罚（贵牌要留到关键时候，平时扣分）
   s -= cost * 0.85;
+  return s;
+}
+
+// ---------- "留着这张牌值多少"（弃牌时用）----------
+//   ⚠️ 和 cardBaseValue 的区别：
+//     cardBaseValue 算的是"现在打出去划不划算" → 贵牌会被扣很多分
+//     cardKeepValue 算的是"留在手里值不值"   → 贵牌虽然是负担但也是资源，
+//                                              不能因为"现在打不出来"就扔掉
+//   之前用 cardBaseValue 排序弃牌 → 会把核弹/末日这种大牌当垃圾丢掉
+function cardKeepValue(card) {
+  if (!card) return 0;
+  const cost = card.cost === "X" ? 4 : (card.cost === "X+1" ? 4 : (Number(card.cost) || 0));
+  const v = typeof card.value === "number" ? card.value : 0;
+  let s = 0;
+  switch (card.effect) {
+    case "dmg": case "dmg_cond": case "dmg_multi": case "dmg_scale":
+      s = v * 1.0; break;
+    case "heal": case "heal_half_lost": s = v * 0.8; break;
+    case "block_dmg": s = v * 0.85; break;
+    case "block_lethal": s = 6.5; break;
+    case "block_reflect": s = 3.5 + v * 0.6; break;
+    case "block_heal": case "block_draw": s = 2.8; break;
+    case "draw3": case "draw2": s = 3.0; break;
+    case "peek": s = 2.2; break;
+    case "summon": s = 5.5; break;
+    case "lifesteal": s = 3.5; break;
+    case "thorns": s = 2.8; break;
+    case "lucky": s = 2.6; break;
+    case "convert": s = 1.4; break;
+    default: s = 2.2;
+  }
+  // 关键牌额外加成（这些牌值得留着等机会）
+  if (/核弹|末日|天崩地裂|黑洞|斩杀|一拳|断头台|定时炸弹/.test(card.name)) s += 4.5;
+  if (/狙击枪|末影龙|皮卡|八音盒|医疗包|回光返照/.test(card.name)) s += 2.2;
+  if (/饥荒|土豆地雷|红绿灯|烟雾弹|硫酸/.test(card.name)) s += 1.4;
+  // 费用只做轻微惩罚（贵牌是负担，但不是垃圾）
+  s -= cost * 0.28;
   return s;
 }
 
@@ -230,7 +270,7 @@ function aiResolve(g, pd, diff) {
       if (!me.hand.length) return {};
       if (diff === "easy" && Math.random() < 0.4) return {};
       // 丢最没用的那张
-      const worst = me.hand.map((n) => ({ n, v: cardBaseValue(CARD_BY_NAME[n]) }))
+      const worst = me.hand.map((n) => ({ n, v: cardKeepValue(CARD_BY_NAME[n]) }))
         .sort((a, b) => a.v - b.v)[0];
       // 伤害很小就别丢牌了
       if ((pd.amount || 0) <= 2 && me.hp > 12) return {};
@@ -268,7 +308,7 @@ function aiResolve(g, pd, diff) {
     case "mulligan": {
       const hand = me.hand.slice();
       if (hand.length < 3) return { discard: [] };
-      const sorted = hand.map((n) => ({ n, v: cardBaseValue(CARD_BY_NAME[n]) }))
+      const sorted = hand.map((n) => ({ n, v: cardKeepValue(CARD_BY_NAME[n]) }))
         .sort((a, b) => a.v - b.v);
       const worst3 = sorted.slice(0, 3);
       const avgWorst = worst3.reduce((a, x) => a + x.v, 0) / 3;
@@ -282,7 +322,7 @@ function aiResolve(g, pd, diff) {
       if (need <= 0) return { discard: [] };                          // 能量满了不丢
       const wantN = Math.min(Math.ceil(need / 3), Math.max(0, me.hand.length - 2));
       if (wantN <= 0) return { discard: [] };
-      const worst = me.hand.map((n) => ({ n, v: cardBaseValue(CARD_BY_NAME[n]) }))
+      const worst = me.hand.map((n) => ({ n, v: cardKeepValue(CARD_BY_NAME[n]) }))
         .sort((a, b) => a.v - b.v).slice(0, wantN);
       return { discard: worst.map((x) => x.n) };
     }
@@ -298,7 +338,7 @@ function aiResolve(g, pd, diff) {
     case "letter": {
       const others = me.hand.filter((n) => n !== "信");
       if (!others.length) return {};
-      const worst = others.map((n) => ({ n, v: cardBaseValue(CARD_BY_NAME[n]) }))
+      const worst = others.map((n) => ({ n, v: cardKeepValue(CARD_BY_NAME[n]) }))
         .sort((a, b) => a.v - b.v)[0];
       return { card: worst.n };
     }
@@ -344,7 +384,7 @@ function aiResolve(g, pd, diff) {
     case "discard_to_limit": {
       const cnt = pd.count || 0;
       if (cnt <= 0) return { discard: [] };
-      const worst = me.hand.map((n) => ({ n, v: cardBaseValue(CARD_BY_NAME[n]) }))
+      const worst = me.hand.map((n) => ({ n, v: cardKeepValue(CARD_BY_NAME[n]) }))
         .sort((a, b) => a.v - b.v).slice(0, cnt);
       return { discard: worst.map((x) => x.n) };
     }
@@ -374,5 +414,5 @@ function aiDelay(diff, extra) {
 }
 
 module.exports = {
-  aiChooseCard, aiResolve, aiDelay, cardBaseValue, boardInfo,
+  aiChooseCard, aiResolve, aiDelay, cardBaseValue, cardKeepValue, boardInfo,
 };
