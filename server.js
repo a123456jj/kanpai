@@ -461,6 +461,11 @@ function viewFor(playerIdx) {
       units: p.units.map((u) => ({ name: u.name, hp: u.hp, atk: u.atk })),
       statuses: E.summarize ? E.summarize(p.statuses) : p.statuses.map((s) => `${s.type}${s.stacks > 1 ? "×" + s.stacks : ""}${s.turns !== null ? "(" + s.turns + ")" : ""}`),
       canPlay: !!p.canPlayThisTurn,
+      // ⚠️ 必须把 canPlayThisTurn 一起发！
+      //    客户端要看它来判断"这回合被禁出牌"（烟雾弹/狙击枪/断头台）
+      //    只发 canPlay 的话，客户端查 canPlayThisTurn 永远是 undefined
+      //    → 禁出牌的提示不显示、手牌不变灰、按钮状态错乱（实测踩过）
+      canPlayThisTurn: p.canPlayThisTurn !== false,
       shield: p.shieldThisTurn || 0,
       skipNext: !!p.skipNextTurn,
       thorns: !!p.thorns,

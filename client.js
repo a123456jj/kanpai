@@ -509,7 +509,11 @@ function fxTurnBar() {
   if (btnStart) btnStart.style.display = (S.phase === "playing" && !spectating) ? "none" : "";
   if (btnEnd) {
     btnEnd.style.display = (S.phase === "playing" && !spectating) ? "" : "none";
-    btnEnd.disabled = !(myTurn || dual) || !!S.pending || !S.me.canPlay;
+    // ⚠️ 不要用 canPlay 来判禁用！
+    //    被禁出牌的回合（烟雾弹/狙击枪/断头台）本来就不能出牌，
+    //    如果这里也禁用，玩家就**没有任何按钮可点**了（实测卡死在这）
+    //    → 只要求"轮到我 + 没有待处理窗口"
+    btnEnd.disabled = !(myTurn || dual) || !!S.pending;
   }
 }
 
@@ -638,7 +642,8 @@ function render() {
     renderPrompt();
   }
 
-  $("btnEndTurn").disabled = !(S.current === S.you && !S.pending && S.phase === "playing" && me.canPlay);
+  // ⚠️ 同样：这里也不能用 canPlay 判禁用（被禁出牌的回合还要能点"结束回合"）
+  $("btnEndTurn").disabled = !(S.current === S.you && !S.pending && S.phase === "playing");
 }
 
 // ---------- 胜负结算画面 ----------
