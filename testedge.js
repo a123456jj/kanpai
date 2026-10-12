@@ -135,7 +135,34 @@ section("8. 续命：AI 的弃牌估值不能把大牌当垃圾");
   ok(isFinite(AI.cardKeepValue({ name: "空白牌", cost: "?", kind: "special" })), "卡表外的牌也能估值");
 }
 
-section("9. 200 局随机对打：不能卡死、不能崩");
+section("9. 被禁出牌的回合：客户端不能反复发无效请求");
+{
+  // 复现用户遇到的 bug：AI 用烟雾弹让玩家"下回合不能出牌"，
+  // 玩家点手牌 → 客户端反复发 play → 服务器反复拒绝 → 界面像卡死
+  const g = setup();
+  E.addStatus(g, g.players[0], "跳过", { turns: 1 });
+  g.players[0].skipNextTurn = true;
+  g.current = 1;                 // 轮到玩家2
+  E.endTurn(g);                  // 换到玩家1 → 应该被禁出牌
+  ok(g.players[0].canPlayThisTurn === false, "玩家1 被禁出牌（canPlayThisTurn=false）");
+
+  // 服务端必须明确拒绝
+  g.players[0].hand = ["一拳"];
+  g.players[0].energy = 20;
+  const r = E.playCard(g, 0, "一拳", {});
+  ok(r && r.ok === false, "服务器拒绝出牌（返回 ok=false）");
+  ok(/不能出牌/.test(r.error || ""), "拒绝原因说得清楚（" + (r.error || "?") + "）");
+
+  // 但 endTurn 必须还能用（否则真的卡死）
+  g.players[0].hand = ["一拳"];
+  g.pending = null;
+  let crashed = null;
+  try { E.endTurn(g); } catch (e) { crashed = e; }
+  ok(!crashed, "被禁出牌的回合仍然能【结束回合】（不卡死）");
+  ok(g.current === 1, "结束回合后正常换手（现在轮到玩家2）");
+}
+
+section("10. 200 局随机对打：不能卡死、不能崩");
 {
   let crashed = null, unfinished = 0;
   for (let n = 0; n < 200; n++) {

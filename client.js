@@ -389,7 +389,12 @@ const handCache = new WeakMap();
 function renderHand(container, hand, mine) {
   if (!container) return;
   if (!hand) { container.innerHTML = ""; handCache.set(container, ""); return; }
-  const sig = hand.join("\u0001");
+  // 🔴 签名里要带上"能不能点"的状态：
+  //    否则回合切换/被禁出牌时，手牌内容没变 → 走缓存分支 → 变灰状态更新不了
+  const interactive = !!(mine && !selectMode && S && S.me &&
+    (MY_PLAYER === null || S.current === S.you) &&
+    S.me.canPlayThisTurn !== false);
+  const sig = (interactive ? "1|" : "0|") + hand.join("\u0001");
   const prev = handCache.get(container);
   // 手牌内容没变 → 不重建，只更新"选中"高亮（这样选牌高亮不会被冲掉）
   if (prev === sig && container.children && container.children.length === hand.length) {
@@ -413,6 +418,9 @@ function renderHand(container, hand, mine) {
       div.classList.add("selected");
     }
     if (!mine) div.classList.add("dis");
+    // 🔴 被禁出牌的回合 / 不是你的回合 → 手牌也变灰（视觉上告诉玩家"现在点没用"）
+    //    ⚠️ 只有非选牌模式才变灰，否则弃牌的时候会点不了
+    if (mine && !selectMode && S && S.me && !interactive) div.classList.add("dis");
     div.innerHTML = `<div class="cicon">${cardIcon(name, c.kind)}</div>
       <div class="ccost">${c.cost}</div>
       <div class="cname">${name}</div>
@@ -484,8 +492,14 @@ function fxTurnBar() {
     bar.className = "turnbar mine";
     txt.textContent = "🎮 双控 · 玩家" + (S.current + 1) + "的回合";
   } else if (myTurn) {
-    bar.className = "turnbar mine";
-    txt.textContent = "✨ 轮到你了！";
+    // ⚠️ "轮到你了"要区分"能出牌"和"被禁出牌"（否则玩家会以为卡死了）
+    if (S.me && S.me.canPlayThisTurn === false) {
+      bar.className = "turnbar theirs";
+      txt.textContent = "⛔ 你这回合不能出牌（点【结束回合】）";
+    } else {
+      bar.className = "turnbar mine";
+      txt.textContent = "✨ 轮到你了！";
+    }
   } else {
     bar.className = "turnbar theirs";
     txt.textContent = "⏳ 等对方出牌…";
@@ -946,6 +960,23 @@ function onCardClick(name) {
     dbg("有弹窗待处理（" + (S.pending.kind) + "），点牌被忽略");
     return;
   }
+  // 🔴 被禁出牌的回合（烟雾弹/狙击枪/断头台）：直接拦下来，别发给服务器
+  //    ⚠️ 之前不拦 → 服务器反复回 "本回合不能出牌" → 界面看起来像卡死了
+  //       （用户实测卡在回合 5 出不去，其实是"不能出牌但没提示"）
+  if (S && S.me && S.me.canPlayThisTurn === false) {
+    setPrompt('<h3>⛔ 你这回合被禁止出牌</h3>' +
+      '<div style="color:#7a6040;margin-bottom:8px">（对方用了【烟雾弹】/【狙击枪】/【断头台】这类牌）' +
+      '<br>你只能<b>结束回合</b>，或者用"格挡牌"应对对方的攻击</div>' +
+      '<button class="primary" onclick="send({type:\'endTurn\'})">⏭ 结束回合</button>');
+    if (typeof FX !== "undefined" && FX.shake) FX.shake("light");
+    dbg("本回合被禁止出牌 → 已拦截，没有发给服务器");
+    return;
+  }
+  // 🔴 不是你的回合：也拦下来
+  if (S && S.current !== S.you && MY_PLAYER !== null) {
+    dbg("还没轮到你（当前是玩家" + (S.current + 1) + "）→ 点牌被忽略");
+    return;
+  }
   const c = CARDS[name];
   if (!c) return;
   if (c.cost === "X") {
@@ -1202,11 +1233,84 @@ let fxAiDiff = "normal";
 })();
 
 // ============================================================
+//  🚑 卡住自检：点一下就把"我现在卡在哪"全部打出来
+//    页面上有什么按钮、服务器说该谁动、为什么我不能出牌…
+// ============================================================
+function fxWhyStuck() {
+  const L = [];
+  const push = (s) => { L.push(s); fxDiag(s); };
+  push("=== 🚑 卡住自检 ===");
+  if (!S) { push("S 是空 → 还没收到服务器状态（可能没开局 / 连接断了）"); return; }
+  push("阶段: " + S.phase);
+  push("我是几号: " + (MY_PLAYER === null ? "双控(null)" : MY_PLAYER) + "   服务器认为我: " + S.you +
+    "   观战: " + (S.spectator ? "是" : "否"));
+  push("当前该谁动: 玩家" + (S.current + 1) + (S.current === S.you ? "（我）" : "（对方）"));
+  push("血量: 我 " + S.me.hp + " / 对方 " + S.opp.hp);
+  push("能量: 我 " + S.me.energy + "/" + S.me.maxEnergy + "  能出牌: " + S.me.canPlayThisTurn);
+  push("手牌 " + S.me.hand.length + " 张: " + S.me.hand.join("、"));
+  push("手牌上限: " + S.me.handLimitThisTurn + (S.me.hand.length > S.me.handLimitThisTurn ? "  ⚠️ 超了！" : ""));
+  push("牌库: 我 " + S.me.deckCount + "  对方 " + S.opp.deckCount);
+  push("状态: 我 " + JSON.stringify(S.me.statuses) + "  对方 " + JSON.stringify(S.opp.statuses));
+  push("待决策(pending): " + (S.pending ? JSON.stringify(S.pending) : "无"));
+
+  // 弹窗里现在显示的是什么
+  const promptEl = document.getElementById("prompt");
+  const promptText = promptEl ? (promptEl.textContent || "").trim().slice(0, 100) : "(没有)";
+  push("弹窗显示: " + (promptText || "(空)"));
+  const btns = promptEl ? promptEl.querySelectorAll("button") : [];
+  push("弹窗里的按钮数: " + btns.length);
+
+  // 主操作按钮
+  const e1 = document.getElementById("btnEndTurn");
+  const e2 = document.getElementById("btnStart");
+  push("顶栏【结束回合】: " + (e1 ? (e1.style.display === "none" ? "隐藏" : "显示") + " 可点=" + !e1.disabled : "没有"));
+  push("顶栏【开始游戏】: " + (e2 ? (e2.style.display === "none" ? "隐藏" : "显示") : "没有"));
+
+  // 为什么不能出牌
+  push("--- 为什么出不了牌 ---");
+  if (S.phase !== "playing") push("  ❌ 阶段不是 playing（" + S.phase + "）");
+  if (S.pending) push("  ❌ 有等待处理的窗口：" + S.pending.kind + " → 先处理它");
+  if (S.current !== S.you) push("  ❌ 还没轮到你");
+  if (S.me.canPlayThisTurn === false) push("  ❌ 你这回合被禁止出牌（狙击枪/烟雾弹/断头台）");
+  const costs = S.me.hand.map((n) => {
+    const c = (typeof CARDS === "object" && CARDS) ? CARDS[n] : null;
+    if (!c) return n + "(?费)";
+    const cost = c.cost === "X" ? 0 : (c.cost === "X+1" ? 0 : (Number(c.cost) || 0));
+    return n + "(" + c.cost + "费" + (cost > S.me.energy ? " 能量不够" : "") + ")";
+  });
+  push("  手牌费用: " + costs.join("、"));
+  const playable = S.me.hand.filter((n) => {
+    const c = (typeof CARDS === "object" && CARDS) ? CARDS[n] : null;
+    if (!c) return false;
+    const cost = c.cost === "X" ? 0 : (c.cost === "X+1" ? 0 : (Number(c.cost) || 0));
+    if (cost > S.me.energy) return false;
+    if (c.effect === "dmg_cond" && S.me.hand.length > 3) return false;
+    return true;
+  });
+  push("  ✅ 现在理论上能出的牌: " + (playable.length ? playable.join("、") : "❌ 一张都出不了"));
+
+  // 最后几条战报
+  push("--- 最后 6 条战报 ---");
+  (S.log || []).slice(-6).forEach((l) => push("  " + l));
+  push("=== 自检结束，把上面的内容发给我就行 ===");
+  return L.join("\n");
+}
+
+// ============================================================
 // 🧪 演出自测按钮（查"为什么没动画"）
 // ============================================================
 (function bindFxTest() {
   var b1 = document.getElementById("btnFxCannon");
   var b2 = document.getElementById("btnFxCheck");
+  var b3 = document.getElementById("btnWhyStuck");
+
+  if (b3) {
+    b3.onclick = function () {
+      const dock = document.getElementById("dock");
+      if (dock) dock.classList.add("show");     // 自动展开战报抽屉，让诊断看得见
+      fxWhyStuck();
+    };
+  }
 
   if (b1) {
     b1.onclick = function () {

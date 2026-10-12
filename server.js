@@ -528,6 +528,8 @@ function broadcast() {
   try { autoAdvancePending(); } catch (e) { console.log("[自动放行] 出错: " + e.message); }
   // ⏱ 待决策超时兜底：有人断线/关了页面 → 45 秒后服务器代他决定（否则对局永久卡住）
   try { autoResolveStuckPending(); } catch (e) { console.log("[超时兜底] 出错: " + e.message); }
+  // 📼 黑匣子：回合/行动方/pending 一变就记一笔
+  try { bbTick("broadcast"); } catch (e) { }
   // 🎯 木桩模式：所有"该木桩决策"的窗口自动选"不用"（否则会卡住不动）
   try { autoResolveDummyPending(); } catch (e) { console.log("[木桩] 自动决策出错: " + e.message); }
   try { ensurePlayerTurn(); } catch (e) { }  for (const c of clients) {
@@ -562,10 +564,37 @@ function broadcast() {
 module.exports = {};
 
 // ---------- 消息处理 ----------
+// 📼 黑匣子：记录最近 200 条"服务器收到什么 / 回合怎么变"
+//    排查"卡住"时用它看最后一步到底发生了什么
+const BLACKBOX = [];
+function bb(line) {
+  BLACKBOX.push(new Date().toISOString().slice(11, 19) + "  " + line);
+  if (BLACKBOX.length > 200) BLACKBOX.shift();
+}
+let bbLastTurn = -1, bbLastCur = -1, bbLastPending = null;
+function bbTick(where) {
+  if (!game) return;
+  const pend = game.pending ? game.pending.kind : "无";
+  if (game.turn !== bbLastTurn || game.current !== bbLastCur || pend !== bbLastPending) {
+    bb(where + " │ 回合=" + game.turn + " 当前=P" + (game.current + 1) +
+      " pending=" + pend + " 血=" + game.players.map((p) => p.hp).join("/") +
+      " 手牌=" + game.players.map((p) => p.hand.length).join("/"));
+    bbLastTurn = game.turn; bbLastCur = game.current; bbLastPending = pend;
+  }
+}
+
 function handleMessage(c, raw) {
   let msg;
   try { msg = JSON.parse(raw); } catch (e) { return; }
   const idx = c.player;
+  // 📼 黑匣子：记下每条消息（不含内容，只记类型 + 关键字段）
+  if (msg.type !== "cheatAction" || true) {
+    bb("收到 P" + (idx === null ? "观战" : idx + 1) + " 的 " + msg.type +
+      (msg.card ? ":" + msg.card : "") +
+      (msg.kind ? ":" + msg.kind : "") +
+      (msg.choice ? ":" + msg.choice : "") +
+      (msg.block !== undefined ? " block=" + msg.block : ""));
+  }
 
   if (msg.type === "start") {
     if (c.player === "spectator") { c.conn.send({ type: "error", message: "观战者不能开始游戏" }); return; }
@@ -1363,6 +1392,17 @@ const server = http.createServer((req, res) => {
   }
   // 🩺 调试用（只在启动时加 --debug 才开）：直接看服务器内部的 pending
   //    ⚠️ 会暴露手牌数等信息 → **默认关闭**，不给朋友玩的版本用
+  // 📼 黑匣子（排查"卡住"用）：只在本机访问，且只在 --debug 下开
+  if (req.url === "/blackbox" && req.socket.remoteAddress &&
+      /^(127\.|::1|::ffff:127\.)/.test(req.socket.remoteAddress)) {
+    res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(BLACKBOX.join("\n") + "\n\n=== 当前状态 ===\n" +
+      (game ? ("回合=" + game.turn + " 当前=P" + (game.current + 1) +
+        " pending=" + (game.pending ? JSON.stringify(game.pending) : "无") +
+        " AI=" + aiOn + "\n血=" + game.players.map((p) => p.hp).join("/") +
+        "\n手牌=" + game.players.map((p) => p.hand.length).join("/")) : "（没有对局）"));
+    return;
+  }
   if (req.url === "/pending" && process.argv.indexOf("--debug") >= 0) {
     const body = game ? {
       阶段: game.phase,
