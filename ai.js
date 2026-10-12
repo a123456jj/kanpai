@@ -11,6 +11,9 @@
 //           hard   在 normal 基础上：算斩杀、留格挡费、优先解威胁
 //      ④ 有"思考延迟"，让人看清它在干什么
 // ============================================================
+// ⚠️ 需要引擎里的规则函数（比如定时炸弹的费用 timeBombCost）
+//    引擎不 require ai，所以这里 require engine 不会造成循环依赖
+const E = require("./engine.js");
 
 // ---------- 牌的"参考价值"（只看牌本身，不看局面）----------
 function cardBaseValue(card) {
@@ -390,11 +393,14 @@ function aiResolve(g, pd, diff) {
     }
 
     // 💣 定时炸弹：打回去 vs 丢掉
+    //   📖 规则：打回去要付能量，费用每次 +1（设计文档第 301 行）
+    //   ⚠️ 必须用引擎的 timeBombCost()，别自己算（之前自己算是错的，差 1）
     case "timebomb": {
-      const cost = 3 + Math.max(0, (g.timeBombCount || 1) - 1);
-      if (cost <= me.energy) return { choice: "play" };     // 有能量就打回去
-      if (me.hp > 8) return { choice: "discard" };          // 血够就硬吃
-      return { choice: "play" };                            // 快死了，赌一把
+      const cost = (E.timeBombCost ? E.timeBombCost(g) : 3 + Math.max(0, g.timeBombCount || 0));
+      const half = me.statuses.some((s) => s.type === "幸运儿");
+      const realCost = half ? cost / 2 : cost;
+      if (me.energy >= realCost) return { choice: "play" };   // 付得起就打回去
+      return { choice: "discard" };                           // 付不起 → 只能吃 6 点丢掉
     }
 
     // 多段攻击：自动继续

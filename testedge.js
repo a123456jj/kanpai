@@ -162,7 +162,105 @@ section("9. 被禁出牌的回合：客户端不能反复发无效请求");
   ok(g.current === 1, "结束回合后正常换手（现在轮到玩家2）");
 }
 
-section("10. 200 局随机对打：不能卡死、不能崩");
+section("10. 定时炸弹：打回去必须付能量（照设计文档『费用每次 +1』）");
+{
+  // ⚠️ 背景：之前 resolveTimeBomb 打回去**不检查也不扣能量**
+  //    → 双方免费无限对传 → 实测 1502 回合、对传 1478 次、双方满血，永远打不完
+  //    📖 设计文档第 301 行：「放到牌库顶；抽到者须在本回合打出（费用每次 +1），
+  //                          否则吃 6 点伤害并丢掉」
+  const g = setup();
+  g.timeBombCount = 0;
+  ok(E.timeBombCost(g) === 3, "第 1 轮费用 = 3（实际 " + E.timeBombCost(g) + "）");
+  g.timeBombCount = 1;
+  ok(E.timeBombCost(g) === 4, "第 2 轮费用 = 4");
+  g.timeBombCount = 5;
+  ok(E.timeBombCost(g) === 8, "第 6 轮费用 = 8");
+
+  // 能量不够 → 打回去要被拒绝
+  {
+    const g2 = setup();
+    g2.timeBombCount = 5;                        // 要 8 能量
+    g2.players[0].hand = ["定时炸弹"];
+    g2.players[0].energy = 4;                    // 不够
+    g2.players[1].deck = ["一拳"];
+    g2.pending = { kind: "timebomb", player: 0 };
+    const r = E.resolveTimeBomb(g2, "play");
+    ok(r && r.ok === false, "能量不够时，打回去被拒绝（" + (r && r.error) + "）");
+    ok(g2.players[0].hand.indexOf("定时炸弹") >= 0, "炸弹还在手上（没被偷偷传走）");
+    ok(g2.pending && g2.pending.kind === "timebomb", "待决策还在（等玩家改选丢掉）");
+  }
+
+  // 能量够 → 打回去生效，并且真的扣了能量
+  {
+    const g3 = setup();
+    g3.timeBombCount = 0;
+    g3.players[0].hand = ["定时炸弹"];
+    g3.players[0].energy = 10;
+    g3.players[1].deck = ["一拳", "木棍", "石头", "牛奶", "雪球"];
+    g3.pending = { kind: "timebomb", player: 0 };
+    const before = g3.players[0].energy;
+    const r = E.resolveTimeBomb(g3, "play");
+    ok(r && r.ok === true, "能量够时打回去成功");
+    ok(g3.players[0].energy === before - 3, "扣了 3 能量（" + before + " → " + g3.players[0].energy + "）");
+    ok(g3.timeBombCount === 1, "轮数 +1（下次要 4 能量）");
+    ok(g3.players[0].hand.indexOf("定时炸弹") < 0, "炸弹离开打回去的人的手");
+    // ⚠️ 不要断言"炸弹还在对方牌库顶"：
+    //    打回去会结束当前回合 → 对方立刻抽 2 张，正好把炸弹抽走
+    //    （这是规则要的效果：炸弹马上转到对方手上逼他处理）
+    //    所以正确断言是"炸弹到了对方那里"——手上，或者已经弹出处理窗口
+    const onHand = g3.players[1].hand.indexOf("定时炸弹") >= 0;
+    const hasWindow = !!(g3.pending && g3.pending.kind === "timebomb" && g3.pending.player === 1);
+    ok(onHand || hasWindow,
+      "炸弹转到了对方（手上=" + onHand + " 弹出窗口=" + hasWindow + "）");
+  }
+
+  // 付不起时选"丢掉" → 吃 6 点 + 炸弹进弃牌堆
+  {
+    const g4 = setup();
+    g4.timeBombCount = 5;
+    g4.players[0].hand = ["定时炸弹"];
+    g4.players[0].energy = 2;
+    g4.pending = { kind: "timebomb", player: 0 };
+    const hp = g4.players[0].hp;
+    const r = E.resolveTimeBomb(g4, "discard");
+    ok(r && r.ok === true, "丢掉永远可以（不看能量）");
+    ok(g4.players[0].hp === hp - 6, "吃 6 点伤害（" + hp + " → " + g4.players[0].hp + "）");
+    ok(g4.players[0].hand.indexOf("定时炸弹") < 0, "炸弹离开手牌");
+    ok(g4.discard.indexOf("定时炸弹") >= 0, "炸弹进了弃牌堆");
+  }
+}
+
+section("11. 炸弹不再无限对传（模拟双方都选打回去）");
+{
+  const g = setup();
+  g.players[0].deck = ["定时炸弹"].concat(g.players[0].deck);
+  let passes = 0, drops = 0;
+  for (let step = 0; step < 4000 && g.phase === "playing"; step++) {
+    if (g.pending) {
+      if (g.pending.kind === "timebomb") {
+        const p = g.players[g.pending.player];
+        const cost = E.timeBombCost(g);
+        if (p.energy >= cost) { passes++; E.resolveTimeBomb(g, "play"); }
+        else { drops++; E.resolveTimeBomb(g, "discard"); }
+      } else if (g.pending.kind === "discard_to_limit") {
+        const p = g.players[g.pending.player];
+        E.resolveDiscardToLimit(g, p.hand.slice(0, g.pending.count), g.pending.player);
+      } else if (g.pending.kind === "multi") {
+        E.resolveMulti(g);
+      } else if (g.pending.kind === "block") {
+        E.applyDamage(g, g.players[g.pending.attacker], g.players[g.pending.defender], g.pending.amount, g.pending.reason);
+        g.pending = g.pending.after || null;
+      } else { g.pending = null; }
+      continue;
+    }
+    E.endTurn(g);
+  }
+  ok(g.phase === "ended", "对局能正常结束（阶段=" + g.phase + "）");
+  ok(passes < 60, "炸弹对传次数有限（" + passes + " 次，不是无限）");
+  ok(drops > 0, "有人付不起被迫丢掉了（" + drops + " 次）");
+}
+
+section("12. 200 局随机对打：不能卡死、不能崩");
 {
   let crashed = null, unfinished = 0;
   for (let n = 0; n < 200; n++) {

@@ -1175,7 +1175,15 @@ function resolvePending(msg, pd) {
       const who = pd.player !== undefined ? pd.player : game.current;
       const foeIdx = 1 - who;
       const hpBefore = game.players[who].hp;
-      E.resolveTimeBomb(game, choice);
+      // 📖 "打回去"要付能量（费用每次 +1，见设计文档第 301 行）
+      //    ⚠️ 之前不检查也不扣能量 → 免费无限对传 → 双方满血永远打不完
+      //       （实测 1502 回合、对传 1478 次）→ 付不起就回绝
+      const rb = E.resolveTimeBomb(game, choice);
+      if (rb && rb.ok === false) {
+        console.log("[定时炸弹] 拒绝: " + rb.error);
+        c.conn.send({ type: "error", message: rb.error });
+        return false;
+      }
       // 🎬 演出：定时炸弹的三种结果
       if (choice === "discard") {
         // 丢掉了 → 炸自己

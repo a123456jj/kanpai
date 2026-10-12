@@ -733,11 +733,26 @@ function renderPrompt() {
   const myEntry = (idx) => (bothHands ? (bothHands[idx] || []) : me.hand);
 
   // 定时炸弹：抽到的人必须处理
+  //   📖 规则（设计文档）：打回去要付能量，费用每次 +1；付不起就只能丢掉吃 6 点
   if (pd.kind === "timebomb") {
     if (pd.player !== iAm) { setPrompt(`<h3>对方抽到了定时炸弹，等他处理…</h3>`); return; }
-    setPrompt(`<h3>💣 你抽到了【定时炸弹】—— 必须选一个</h3>
-      <button class="primary" onclick="doResolve({choice:'play'})">打出去（放到对方牌库顶）</button>
-      <button class="danger" onclick="doResolve({choice:'discard'})">丢掉它（自己吃 6 点伤害）</button>`);
+    const cnt = (S.timeBombCount || 0) + 1;              // 这是第几轮
+    const cost = 3 + Math.max(0, S.timeBombCount || 0);   // 和引擎 timeBombCost 一致
+    const lucky = (S.me.statuses || []).some((s) => String(s).indexOf("幸运儿") >= 0);
+    const realCost = lucky ? cost / 2 : cost;
+    const canPay = S.me.energy >= realCost;
+    let html = `<h3>💣 你抽到了【定时炸弹】—— 必须选一个</h3>`;
+    html += `<div style="font-size:12.5px;color:#7a6040;margin-bottom:8px">` +
+      `这是第 <b>${cnt}</b> 轮 · 打回去要 <b>${realCost}</b> 能量（你还有 ${S.me.energy}）` +
+      (lucky ? "（幸运儿减半）" : "") + `</div>`;
+    if (canPay) {
+      html += `<button class="primary" onclick="doResolve({choice:'play'})">打出去（花 ${realCost} 能量，放到对方牌库顶）</button>`;
+    } else {
+      html += `<div style="color:#a02038;font-weight:bold;margin-bottom:8px">` +
+        `⛔ 能量不够（要 ${realCost}，只有 ${S.me.energy}）→ 只能丢掉</div>`;
+    }
+    html += `<button class="danger" onclick="doResolve({choice:'discard'})">丢掉它（自己吃 6 点伤害）</button>`;
+    setPrompt(html);
     return;
   }
 

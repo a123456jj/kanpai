@@ -1168,12 +1168,27 @@ function resolveDiscardToLimit(g, names, whoIdx) {
 //   ⚠️ 用 pending 里记的 player（抽到炸弹的人），不能用 g.current
 //      —— 定时炸弹可能是"回合开始抽牌"时抽到的，
 //         也可能是别的效果让对方抽到的，那时 g.current 未必是抽到的人
+//
+//  📖 设计文档的规则（第 301 行）：
+//     「放到牌库顶；抽到者须在本回合打出（**费用每次 +1**），否则吃 6 点伤害并丢掉」
+//     ⚠️ 之前"打回去"**不检查也不扣能量** → 永远免费 → 双方无限对传
+//        （实测 1502 回合、对传 1478 次、双方满血，游戏永远打不完）
+//     现在照文档实现：打回去要付 3 + (已经传过几次) 的能量；
+//     能量不够就只能"丢掉吃 6 点"。
+//
+// 返回 { ok, error?, cost? } —— 调用方（服务器）据此回绝无效操作
+function timeBombCost(g) {
+  return 3 + Math.max(0, (g.timeBombCount || 0));
+}
+
 function resolveTimeBomb(g, choice) {
   const who = (g.pending && g.pending.kind === "timebomb" && g.pending.player !== undefined)
     ? g.pending.player : g.current;
   const p = g.players[who];
+  if (!p) { g.pending = null; return { ok: false, error: "找不到玩家" }; }
   const idx = p.hand.indexOf("定时炸弹");
-  if (idx < 0) { g.pending = null; return; }
+  if (idx < 0) { g.pending = null; return { ok: false, error: "手上没有炸弹" }; }
+
   if (choice === "discard") {
     // 丢掉炸弹 + 吃 6 点伤害
     p.hand.splice(idx, 1);
@@ -1181,19 +1196,27 @@ function resolveTimeBomb(g, choice) {
     log(g, `${p.name} 丢掉了定时炸弹（吃 6 点伤害）`);
     loseHp(g, p, 6, "定时炸弹");
   } else {
-    // 打出去（放到对方牌库顶）
+    // 打出去（放到对方牌库顶）—— 要付能量，费用每次 +1（照设计文档）
+    const cost = timeBombCost(g);
+    const realCost = hasStatus(p, "幸运儿") ? floor05(cost / 2) : cost;
+    if (p.energy < realCost) {
+      // 付不起 → 拒绝（服务器会告诉玩家，客户端只给"丢掉"的选项）
+      return { ok: false, error: `打回去要 ${realCost} 能量，你只有 ${p.energy}` };
+    }
+    p.energy = floor05(p.energy - realCost);
     g.timeBombCount = (g.timeBombCount || 0) + 1;
     p.hand.splice(idx, 1);
     const opp = g.players[1 - who];
     opp.deck.unshift("定时炸弹");
-    log(g, `${p.name} 把定时炸弹交给了 ${opp.name}`);
+    log(g, `${p.name} 花 ${realCost} 能量把定时炸弹交给了 ${opp.name}（第 ${g.timeBombCount} 轮，下次要 ${timeBombCost(g)} 能量）`);
   }
   g.pending = null;
   // ⚠️ 只有"当前回合的玩家"处理完才算这一回合结束
-  if (who !== g.current) return;
-  if (g.phase === "ended") return;
+  if (who !== g.current) return { ok: true };
+  if (g.phase === "ended") return { ok: true };
   // 可能还有弃牌要处理
-  if (endTurn(g) === true) return;
+  if (endTurn(g) === true) return { ok: true };
+  return { ok: true };
 }
 
 // ---------- 导出 ----------
@@ -1206,6 +1229,7 @@ module.exports = {
   finishTurn,
   resolveDiscardToLimit,
   resolveTimeBomb,
+  timeBombCost,
   resolveSpring,
   checkSpring,
   playCard,
