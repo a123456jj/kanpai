@@ -909,6 +909,17 @@ function resolvePending(msg, pd) {
         const cardName = msg.block;
         const card = CARD_BY_NAME[cardName];
         if (!card || !def.hand.includes(cardName)) return false;
+        // 📖 设计文档第 156 / 321 行：名刀是「仅在即将致死的那一下打出，不能提前挂」
+        //    ⚠️ 之前服务器不检查 → 名刀能挡任意伤害（用户实测发现的）
+        //       现在：这一下打不死他，就不许用名刀（客户端也不会给这个选项）
+        if (card.effect === "block_lethal" && (pd.amount || 0) < def.hp) {
+          c.conn.send({
+            type: "error",
+            message: "【" + cardName + "】只能挡『会打死你的那一下』" +
+              "（这一下只有 " + pd.amount + " 点，你还有 " + def.hp + " 血）",
+          });
+          return false;
+        }
         // 检查能量（幸运儿减半）
         let cost = card.cost === "X" ? 0 : card.cost;
         if (E.hasStatus(def, "幸运儿")) cost = E.floor05(cost / 2);

@@ -795,11 +795,25 @@ function renderPrompt() {
   }
 
   if (pd.kind === "block" && pd.defender === iAm) {
+    // 📖 设计文档：名刀是"反应式：在即将受到致死伤害的那一下打出，不能提前挂"
+    //    （第 156 / 321 行）→ 所以只有这一下**会打死你**的时候才给名刀选项
+    const lethal = (pd.amount || 0) >= S.me.hp;
     const opts = myEntry(iAm).filter((n) => {
       const c = CARDS[n];
-      return c && ["block_lethal", "block_one", "block_draw", "block_reflect", "block_heal"].includes(c.effect);
+      if (!c) return false;
+      if (c.effect === "block_lethal") return lethal;      // 名刀：只在致死时可用
+      return ["block_one", "block_draw", "block_reflect", "block_heal"].includes(c.effect);
     });
     let html = `<h3>对方打出了攻击（${pd.amount} 点伤害 · ${pd.reason || ""}）—— 要用格挡牌吗？</h3>`;
+    if (lethal) {
+      html += `<div style="color:#a02038;font-weight:bold;margin-bottom:6px">☠️ 这一下会打死你（你只有 ${S.me.hp} 血）</div>`;
+    } else {
+      const hasMingdao = myEntry(iAm).some((n) => CARDS[n] && CARDS[n].effect === "block_lethal");
+      if (hasMingdao) {
+        html += `<div style="font-size:12px;color:#7a6040;margin-bottom:6px">` +
+          `（名刀要留到"会打死你的那一下"才能用，现在用不了）</div>`;
+      }
+    }
     html += `<button onclick="doBlock(null)">不挡，吃伤害</button> `;
     for (const n of opts) {
       const c = CARDS[n];

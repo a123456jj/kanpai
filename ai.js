@@ -231,17 +231,20 @@ function aiResolve(g, pd, diff) {
     // 🛡 要不要格挡
     case "block": {
       const dmg = pd.amount || 0;
+      // 致死伤害 → 必挡（有牌就挡）
+      const lethal = dmg >= me.hp;
       // 能挡的牌（有格挡牌 + 能量够）
+      //   ⚠️ 名刀是"仅在即将致死的那一下"才能用（设计文档第 156 行）
+      //      → 非致死时把它从候选里剔掉（否则服务器会拒绝，白白浪费一次决策）
       const canUse = me.hand.filter((n) => {
         const c = CARD_BY_NAME[n];
         if (!c || c.kind !== "block") return false;
+        if (c.effect === "block_lethal" && !lethal) return false;
         const cost = c.cost === "X" ? 0 : (Number(c.cost) || 0);
         return cost <= me.energy;
       });
       if (!canUse.length) return { block: null };
 
-      // 致死伤害 → 必挡（有牌就挡）
-      const lethal = dmg >= me.hp;
       // 名刀能挡致死
       const hasMingdao = canUse.includes("名刀");
       if (lethal) {
@@ -263,7 +266,8 @@ function aiResolve(g, pd, diff) {
         .sort((a, b) => a.v - b.v);
       const enough = sorted.find((x) => x.v >= dmg) || sorted[sorted.length - 1];
       // 盾反/水晶盾这类有额外效果的优先
-      const fancy = canUse.find((n) => /盾反|水晶盾|名刀/.test(n));
+      // 盾反/水晶盾这类有额外效果的优先（名刀不在 canUse 里了，因为非致死用不了）
+      const fancy = canUse.find((n) => /盾反|水晶盾/.test(n));
       if (fancy && diff !== "easy" && dmg >= 5) return { block: fancy };
       return { block: enough.n };
     }

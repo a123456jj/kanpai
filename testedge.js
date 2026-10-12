@@ -8,6 +8,7 @@
 // ============================================================
 const E = require("./engine.js");
 const AI = require("./ai.js");
+const fs = require("fs");
 const { CARDS, CARD_BY_NAME } = require("./cards.js");
 
 let pass = 0, fail = 0;
@@ -258,6 +259,36 @@ section("11. 炸弹不再无限对传（模拟双方都选打回去）");
   ok(g.phase === "ended", "对局能正常结束（阶段=" + g.phase + "）");
   ok(passes < 60, "炸弹对传次数有限（" + passes + " 次，不是无限）");
   ok(drops > 0, "有人付不起被迫丢掉了（" + drops + " 次）");
+}
+
+section("11. 名刀只能挡『会打死你的那一下』（设计文档第 156 / 321 行）");
+{
+  // 📖 设计文档：「名刀｜0｜反应式：仅在"即将致死的那一下"打出，不能提前挂」
+  //    ⚠️ 之前服务器不检查 → 名刀能挡任意伤害（用户实测发现的）
+  ok(/block_lethal/.test(fs.readFileSync(__dirname + "/server.js", "utf8")),
+    "服务器里有 block_lethal 的判断");
+  const srvSrc = fs.readFileSync(__dirname + "/server.js", "utf8");
+  const i = srvSrc.indexOf('case "block"');
+  const seg = srvSrc.slice(i, i + 1200);
+  ok(/block_lethal.*pd\.amount.*def\.hp/s.test(seg) || /block_lethal[\s\S]{0,200}pd\.amount/.test(seg),
+    "服务器会检查『伤害 < 血量 → 不许用名刀』");
+
+  // AI 也不能选名刀挡非致死伤害
+  const aiSrc = fs.readFileSync(__dirname + "/ai.js", "utf8");
+  ok(/block_lethal.*!lethal/.test(aiSrc) || /!lethal.*block_lethal/.test(aiSrc),
+    "AI 在非致死时会把名刀从候选里剔掉");
+
+  // 客户端只在致死时给名刀选项
+  const clSrc = fs.readFileSync(__dirname + "/client.js", "utf8");
+  ok(/lethal/.test(clSrc) && /block_lethal.*lethal/.test(clSrc.replace(/\s+/g, " ")),
+    "客户端只在致死时给出名刀选项");
+
+  // 逻辑验证：致死 / 非致死的判定
+  const g = setup();
+  g.players[0].hp = 3;
+  ok((5 >= g.players[0].hp) === true, "5 点伤害打 3 血 → 判定为致死（名刀可用）");
+  g.players[0].hp = 20;
+  ok((5 >= g.players[0].hp) === false, "5 点伤害打 20 血 → 非致死（名刀不可用）");
 }
 
 section("12. 200 局随机对打：不能卡死、不能崩");
