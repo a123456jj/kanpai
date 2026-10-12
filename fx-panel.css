@@ -148,7 +148,7 @@
 .par-line  { color: #d6ecff; animation-name: aSpark; font-weight: 900; }
 .par-ripple { color: #78b4ff; animation-name: aRipple;
               border: 2px solid currentColor; border-radius: 50%; width: 2em; height: 2em; background: transparent; }
-.p-shock .p-fx-box { animation: aJitterBox .16s steps(2,end) infinite; }
+.p-shock .p-fx-box { /* 🧹 常驻抖动已删（用户要求） */ }
 
 /* ============================================================
    6. 断头台 —— 刀片掉落 / 火花 / 红色打击线
@@ -245,8 +245,7 @@
 .par-hexglow { color: #e6f9ff; animation-name: aTwinkle; }
 .par-shieldring { color: #7fd4ff; animation-name: aShieldRing;
                   border: 2px solid currentColor; border-radius: 50%; width: 2.4em; height: 2.4em; background: transparent; }
-.p-shield .p-sweep { position: absolute; inset: 0; background: linear-gradient(105deg, transparent 42%, rgba(200,245,255,.45) 50%, transparent 58%);
-                     animation: aSweepX 2.6s linear infinite; }
+.p-shield .p-sweep { display: none; /* 🧹 常驻扫光已删（用户要求） */ }
 
 /* ============================================================
    11. 反甲 —— 尖刺外顶 / 红色溅射 / 尖刺环

@@ -61,34 +61,19 @@ function fxPlayCardAt(cardName, defenderIdx, myIdx, speed) {
   } catch (e) { dbg("演出出错: " + e.message); }
 }
 
-// 💣 定时炸弹徽章：把"炸弹在谁牌库顶"同步给 fx.js（常驻显示在那一方的面板上）
-//    （这是新设计：炸弹是个"挂着的东西"，不是一次性动画 → 不会重叠）
+// 💣 定时炸弹徽章：**已删除**（用户要求："删掉徽章和边框光，只留文字"）
+//    以前会在牌库顶有炸弹那一方的面板上挂一个金属球 + 计时器 + 火花 + 一直抖
+//    现在什么都不挂 —— 炸弹情况靠下面的文字提示和战报看
 function fxSyncBomb(iAm) {
-  if (typeof FX === "undefined" || !FX.syncBomb) return;
-  try {
-    if (!S || !S.bombOn) { FX.syncBomb(null); return; }
-    const danger = (S.timeBombCount || 0) + 1;
-    const mineOnDeck = (iAm >= 0) && !!S.bombOn[iAm];
-    const oppOnDeck = (iAm >= 0) ? !!S.bombOn[1 - iAm] : (!!S.bombOn[1]);
-    // 优先显示对手身上的（更醒目）；没有就显示自己牌库上的
-    if (oppOnDeck) FX.syncBomb({ who: "opp", danger: danger });
-    else if (mineOnDeck) FX.syncBomb({ who: "me", danger: danger });
-    else FX.syncBomb(null);
-  } catch (e) { dbg("炸弹徽章出错: " + e.message); }
+  if (typeof FX !== "undefined" && FX.syncBomb) { try { FX.syncBomb(null); } catch (e) { } }
 }
 
-// 🥔 土豆地雷徽章：把"谁身上埋着雷"同步给 fx.js（常驻显示在那一方面板上）
+// 🧹 常驻徽章已删除（用户要求："删掉徽章和边框光，只留文字"）
+//    这两个函数保留成空操作，是为了兼容别处可能的调用；
+//    地雷徽章、炸弹徽章、状态粒子、边框光 —— 全都不再创建了。
+//    状态只靠文字显示（面板下方那排小标签 + 战报）。
 function fxSyncMine(iAm) {
-  if (typeof FX === "undefined" || !FX.syncMine) return;
-  try {
-    if (!S || !S.mineOn) { FX.syncMine(null); return; }
-    const mineMe = (iAm >= 0) && !!S.mineOn[iAm];
-    const mineOpp = (iAm >= 0) ? !!S.mineOn[1 - iAm] : !!S.mineOn[1];
-    // 优先显示对手身上的（更醒目）
-    if (mineOpp) FX.syncMine({ who: "opp" });
-    else if (mineMe) FX.syncMine({ who: "me" });
-    else FX.syncMine(null);
-  } catch (e) { dbg("地雷徽章出错: " + e.message); }
+  if (typeof FX !== "undefined" && FX.syncMine) { try { FX.syncMine(null); } catch (e) { } }
 }
 
 // 定时炸弹被抽到时的警示（只在弹窗第一次出现时播一次）
@@ -332,9 +317,69 @@ function fxHpTick(which, hp) {
   if (b) b.textContent = hp;
 }
 
+// 🏷 状态的简短说明（动画删掉后，靠文字把情况说清楚）
+const STATUS_HINT = {
+  "中毒": "每回合扣 1 血/层",
+  "焚烧": "每回合扣 2 血",
+  "饥荒": "每回合扣 1 血/层",
+  "流血": "每回合扣血",
+  "虚弱": "伤害减半",
+  "抗性": "受到的伤害减半",
+  "免疫": "免疫下一次伤害",
+  "护盾": "按数值吸收伤害",
+  "反甲": "被打时反弹伤害",
+  "蓄力": "下一张牌伤害 ×2",
+  "兴奋剂": "下一张牌伤害 ×2",
+  "嗜血": "吸血",
+  "幸运儿": "费用减半",
+  "转头": "下次回血减半",
+  "钻石镐": "能量上限 +2",
+  "八音盒": "倒计时结束判负",
+  "土豆地雷": "出牌就炸，扣 3 血",
+  "定时炸弹": "牌库顶有炸弹",
+  "黑白": "跳过回合",
+  "跳过": "下回合不能出牌",
+  "牛奶": "回血 + 清状态",
+  "盾反": "格挡并反弹",
+  "水晶盾": "格挡并回血",
+  "名刀": "免疫致死伤害",
+  "末影龙": "单位",
+  "皮卡": "单位",
+};
+
+// 🧹 常驻动画已删 → 用文字标签把"身上挂着什么"说清楚
+//     bad=对我不利 / good=对我有利 / 普通=中性
 function statusTags(list) {
   if (!list || !list.length) return "";
-  return list.map((s) => `<span class="tag bad">${s}</span>`).join("");
+  return list.map(function (s) {
+    // 带层数的（"中毒×2"）也能匹配上说明
+    const key = Object.keys(STATUS_HINT).find(function (k) { return s.indexOf(k) >= 0; });
+    const hint = key ? '<span style="opacity:.72;font-weight:normal">（' + STATUS_HINT[key] + "）</span>" : "";
+    return '<span class="tag bad">' + s + hint + "</span>";
+  }).join("");
+}
+
+// 💣🥔 炸弹 / 地雷 的情况也用文字说明（以前是靠徽章）
+function fxSituationTags() {
+  if (!S || S.spectator) return "";
+  const out = [];
+  // 谁手上有炸弹还没处理
+  if (S.bombHeld && S.bombHeld.length === 2) {
+    if (S.bombHeld[0]) out.push('<span class="tag bad">💣 你手上有定时炸弹，必须处理</span>');
+    if (S.bombHeld[1]) out.push('<span class="tag good">💣 对方手上有定时炸弹</span>');
+  }
+  // 谁牌库顶有炸弹
+  if (S.bombOn && S.bombOn.length === 2) {
+    const n = (S.timeBombCount || 0) + 1;
+    if (S.bombOn[1]) out.push('<span class="tag good">💣 对方牌库顶有炸弹（第 ' + n + " 轮）</span>");
+    if (S.bombOn[0]) out.push('<span class="tag bad">💣 你的牌库顶有炸弹（第 ' + n + " 轮）</span>");
+  }
+  // 谁身上埋着地雷
+  if (S.mineOn && S.mineOn.length === 2) {
+    if (S.mineOn[1]) out.push('<span class="tag good">🥔 对方身上埋着地雷（出牌就炸）</span>');
+    if (S.mineOn[0]) out.push('<span class="tag bad">🥔 你身上埋着地雷（出牌就炸 3 血）</span>');
+  }
+  return out.join("");
 }
 
 // 记住上次渲染的手牌（用来判断"要不要重建 DOM"）
@@ -470,8 +515,20 @@ function render() {
   // 血量（新 UI：低了会变红闪）
   fxHpTick("me", me.hp);
   fxHpTick("opp", opp.hp);
+  // 🧹 常驻动画删除后 → 用文字把"身上挂着什么"说清楚（带含义说明）
+  //    对方的面板显示"对方视角"的状态，我的显示我的
   $("meInfo").innerHTML = statLine(me, true) + (me.statuses && me.statuses.length ? "<br>" + statusTags(me.statuses) : "");
   $("oppInfo").innerHTML = statLine(opp, false) + (opp.statuses && opp.statuses.length ? "<br>" + statusTags(opp.statuses) : "");
+  // 💣🥔 炸弹 / 地雷的情况（以前是徽章，现在是文字）
+  const sit = fxSituationTags();
+  if (sit) $("meInfo").innerHTML += "<br>" + sit;
+  // 自己在牌库顶的炸弹也给对方看得到（对方面板显示"他牌库顶有炸弹"）
+  if (S.bombOn && S.bombOn[1] && !S.spectator) {
+    $("oppInfo").innerHTML += '<br><span class="tag good">💣 他牌库顶有炸弹</span>';
+  }
+  if (S.mineOn && S.mineOn[1] && !S.spectator) {
+    $("oppInfo").innerHTML += '<br><span class="tag good">🥔 他身上埋着地雷</span>';
+  }
 
   // 单位
   if (me.units && me.units.length) $("meInfo").innerHTML += "<br>单位：" + me.units.map((u) => `${u.name}(${u.hp}血/${u.atk}伤)`).join("、");

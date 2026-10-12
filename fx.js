@@ -1792,17 +1792,24 @@
     }
   }
 
+  // 🧹 常驻特效已删除（用户要求："状态的常驻动画太冗杂"）
+  //    以前这里会给每个状态开好几套 setInterval，无限生成飘动粒子，
+  //    还会加边框抖动、扫光 —— 屏幕上一直在动，太吵。
+  //    现在：**一个粒子都不生成，一丝边框光都不加**，状态只靠文字显示。
+  //    （下面的粒子代码保留着，但已经没有任何地方会调用它了）
   function setPanelFx(panelId, statusMap) {
     const el = document.getElementById(panelId);
     if (!el) return;
-    // 先清掉旧的特效层（只清这个面板的）
+    // 清掉可能残留的旧特效层
     el.querySelectorAll(".p-fx").forEach((n) => n.remove());
     el.querySelectorAll(".p-tag").forEach((n) => n.remove());
     clearPanelTimers(panelId);
-    if (!statusMap) {
-      el.style.removeProperty("--p-edge");
-      return;
-    }
+    el.style.removeProperty("--p-edge");
+    if (!statusMap) return;
+    // ⛔ 不再生成任何常驻元素 —— 直接返回
+    return;
+
+    /* eslint-disable no-unreachable */
     const names = Object.keys(statusMap);
     // 以第一个状态的颜色作为"这一框"的边光色
     if (names[0] && PANEL_STATUS_EDGE[names[0]]) {
@@ -4253,7 +4260,23 @@
 
   // 显示/更新炸弹徽章（对手牌库顶有炸弹时调用）
   //   panelId: "oppPanel" / "mePanel"    danger: 第几轮（1~3）
+  // 🧹 常驻的炸弹徽章已删除（用户要求："删掉徽章和边框光，只留文字"）
+  //    以前这里在面板上方挂一个金属球 + 计时器 + 火花 + 一直抖动
+  //    现在默认什么都不做 —— 只负责把可能残留的清掉
+  //    （想临时看回旧效果：控制台执行 __FX_BADGES = true）
   function syncBomb(info) {
+    if (bombBadge) {
+      try { bombBadge.wrap.remove(); } catch (e) { }
+      bombBadge = null;
+    }
+    if (bombTick) { clearInterval(bombTick); bombTick = null; }
+    if (bombOnResize) {
+      window.removeEventListener("scroll", bombOnResize, true);
+      window.removeEventListener("resize", bombOnResize);
+      bombOnResize = null;
+    }
+    if (!window.__FX_BADGES) return;
+
     // info: { who: "opp"|"me"|null, danger: n }   传 null 表示"没有炸弹了"
     if (!info || !info.who) {
       if (bombBadge) {
@@ -4566,8 +4589,22 @@
     mineBadge.wrap.style.top = y + "px";
   }
 
-  // 显示/更新地雷徽章（被埋那一方）
+  // 🧹 常驻的地雷徽章已删除（用户要求：只留文字）
+  //    踩爆的爆炸（mineBlast）**保留** —— 那是一次性演出，不是常驻
+  //    （想临时看回旧效果：控制台执行 __FX_BADGES = true）
   function syncMine(info) {
+    if (mineBadge) {
+      try { mineBadge.wrap.remove(); } catch (e) { }
+      mineBadge = null;
+    }
+    if (mineTick) { clearInterval(mineTick); mineTick = null; }
+    if (mineOnResize) {
+      window.removeEventListener("scroll", mineOnResize, true);
+      window.removeEventListener("resize", mineOnResize);
+      mineOnResize = null;
+    }
+    if (!window.__FX_BADGES) return;
+
     if (!info || !info.who) {
       if (mineBadge) {
         const b = mineBadge;
