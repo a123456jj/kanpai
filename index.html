@@ -3,175 +3,557 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>卡牌游戏 v13</title>
+<title>🎴 卡牌对决</title>
 <link rel="stylesheet" href="fx-panel.css">
 <style>
-  * { box-sizing: border-box; }
-  body { margin: 0; padding: 10px; background: #1a1a1f; color: #e8e8ec;
-         font-family: "Microsoft YaHei", sans-serif; font-size: 14px; }
+/* ══════════════════════════════════════════════════════════
+   🎨 卡通风格 · 分层界面
+     第1层 顶栏：标题 + 回合提示 + 设置 + 主操作（只有 2 个按钮）
+     第2层 设置抽屉：身份 / 模式 / 其他
+     第3层 底部抽屉：战报 + 演出诊断（默认折叠）
+   ══════════════════════════════════════════════════════════ */
+:root{
+  --cream:#fff8ec; --cream2:#ffefd6; --ink:#4a3520; --ink2:#7a6040; --paper:#fffdf8;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;min-height:100%}
+body{
+  color:var(--ink); font-weight:bold;
+  font-family:"Comic Sans MS","Yuanti SC","YouYuan","Microsoft YaHei",system-ui,sans-serif;
+  font-size:15px;
+  background:var(--cream);
+  background-image:
+    radial-gradient(circle at 8% 12%, rgba(255,154,162,.28) 0 44px, transparent 45px),
+    radial-gradient(circle at 24% 78%, rgba(154,212,255,.26) 0 58px, transparent 59px),
+    radial-gradient(circle at 78% 20%, rgba(255,227,138,.30) 0 50px, transparent 51px),
+    radial-gradient(circle at 92% 70%, rgba(168,230,163,.26) 0 64px, transparent 65px),
+    radial-gradient(circle at 46% 46%, rgba(212,168,255,.16) 0 70px, transparent 71px),
+    linear-gradient(180deg, var(--cream) 0%, var(--cream2) 100%);
+  background-attachment:fixed;
+}
+#fx{position:fixed;inset:0;pointer-events:none;z-index:9995}
+#fx-flash{position:fixed;inset:0;pointer-events:none;z-index:9990;opacity:0}
+#fx *,#fx-flash *{pointer-events:none !important}
+#page{position:relative;z-index:10}
 
-  /* ⚠️ 这两个是演出层：fx.js 把所有动画元素放进 #fx，闪光放进 #fx-flash。
-        没有它们，任何动画都不会显示（之前就是漏了这两个）。 */
-  #fx { position: fixed; inset: 0; pointer-events: none; z-index: 9995; }
-  #fx-flash { position: fixed; inset: 0; pointer-events: none; z-index: 9990; opacity: 0; }
-  #fx *, #fx-flash * { pointer-events: none !important; }
-  #page { position: relative; z-index: 10; }
+/* ══════════ 第 1 层：顶栏 ══════════ */
+.bar{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:11px 18px;
+  background:linear-gradient(180deg,#fffdf6,#ffeacb);
+  border-bottom:4px solid var(--ink);
+  box-shadow:0 6px 0 rgba(74,53,32,.14);
+  position:sticky;top:0;z-index:60;
+}
+.logo{
+  font-size:22px;font-weight:900;letter-spacing:2px;color:#fff;
+  padding:4px 15px 6px;border-radius:16px;
+  background:linear-gradient(180deg,#ffc93c,#e0a000);
+  border:3px solid var(--ink);
+  box-shadow:0 4px 0 var(--ink), inset 0 2px 0 rgba(255,255,255,.5);
+  text-shadow:0 2px 0 rgba(0,0,0,.22);
+  flex-shrink:0;
+}
+/* 中间的回合提示（一条胶囊，最显眼） */
+.turnbar{
+  flex:1;min-width:150px;display:flex;align-items:center;justify-content:center;gap:9px;
+  font-size:16px;font-weight:900;letter-spacing:1px;
+  padding:8px 18px;border-radius:18px;
+  background:#fff;border:3px solid var(--ink);
+  box-shadow:0 4px 0 rgba(74,53,32,.2);
+  transition:background .25s, box-shadow .25s;
+}
+.turnbar.mine{background:linear-gradient(180deg,#fff6c4,#ffe38a);border-color:#c98a00;box-shadow:0 4px 0 #b07a00}
+.turnbar.theirs{background:linear-gradient(180deg,#ffe4e8,#ffc9d0);border-color:#c02a44;box-shadow:0 4px 0 #a02038}
+.turnbar .dot{
+  width:13px;height:13px;border-radius:50%;
+  background:var(--ink);opacity:.25;
+}
+.turnbar.mine .dot{background:#e0a000;opacity:1;animation:dotPop .9s infinite}
+.turnbar.theirs .dot{background:#e8455c;opacity:1;animation:dotPop .9s infinite}
+@keyframes dotPop{0%,100%{transform:scale(1)}50%{transform:scale(1.4)}}
 
-  h2 { margin: 6px 0; font-size: 16px; }
-  .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
-  button { background: #3a3a48; color: #e8e8ec; border: 1px solid #55556a; padding: 6px 12px;
-           border-radius: 4px; cursor: pointer; font-size: 13px; }
-  button:hover { background: #4a4a5c; }
-  button:disabled { opacity: .4; cursor: not-allowed; }
-  button.primary { background: #2d6cdf; border-color: #2d6cdf; }
-  button.danger { background: #b33; border-color: #b33; }
-  button.who { background: #2a4a2a; border-color: #3a6a3a; font-weight: bold; }
-  button.who.on { background: #3a8a3a; border-color: #5aca5a; }
+/* 顶栏右侧只有：齿轮 + 主操作 */
+.bar .right{display:flex;align-items:center;gap:9px;flex-shrink:0}
 
-  .panel { border: 1px solid #33334a; border-radius: 6px; padding: 8px; margin-bottom: 8px;
-           background: #22222c; overflow: hidden; }
-  .row { display: flex; gap: 12px; flex-wrap: wrap; }
-  .side { flex: 1; min-width: 320px; }
-  .stat { display: inline-block; margin-right: 14px; }
-  .stat b { color: #7fd; }
-  .stat.hp b { color: #f88; }
+/* ══════════ 按钮（通用）══════════ */
+button{
+  font-family:inherit;font-weight:bold;
+  background:linear-gradient(180deg,#fffdf6,#ffe6c4);
+  color:var(--ink);
+  border:3px solid var(--ink);
+  padding:8px 15px 9px;border-radius:14px;
+  cursor:pointer;font-size:14px;letter-spacing:.5px;
+  box-shadow:0 4px 0 var(--ink);
+  transition:transform .08s ease, box-shadow .08s ease, filter .15s;
+}
+button:hover{filter:brightness(1.06);transform:translateY(-2px);box-shadow:0 6px 0 var(--ink)}
+button:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}
+button:disabled{opacity:.42;cursor:not-allowed;transform:none;box-shadow:0 3px 0 var(--ink);filter:grayscale(.55)}
+button.primary{
+  background:linear-gradient(180deg,#ffe58a,#ffc93c);color:#5a3c00;
+  box-shadow:0 4px 0 #b07a00;
+}
+button.primary:active{box-shadow:0 1px 0 #b07a00}
+button.danger{
+  background:linear-gradient(180deg,#ff9aa2,#ff6b81);color:#fff;
+  text-shadow:0 2px 0 rgba(0,0,0,.25);box-shadow:0 4px 0 #a02038;
+}
+button.danger:active{box-shadow:0 1px 0 #a02038}
+button.who{
+  background:linear-gradient(180deg,#d6ecff,#9ad4ff);color:#1a4a7a;
+  box-shadow:0 4px 0 #2b6aa0;
+}
+button.who.on{
+  background:linear-gradient(180deg,#8ce8dd,#3fcabb);color:#0a4a44;
+  box-shadow:0 4px 0 #1a7a70, 0 0 0 3px #0a4a44 inset;
+}
+button.ghost{
+  background:transparent;border-color:transparent;box-shadow:none;
+  color:var(--ink2);font-size:13px;padding:6px 10px 7px;
+}
+button.ghost:hover{background:rgba(74,53,32,.08);transform:none;box-shadow:none}
+button.gear{
+  width:46px;height:46px;padding:0;border-radius:50%;
+  font-size:20px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(180deg,#fffdf6,#ffe6c4);
+}
+button.gear:hover{transform:rotate(35deg) translateY(-2px)}
 
-  .hand { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
-  .card { width: 108px; min-height: 92px; padding: 6px; border-radius: 5px; border: 1px solid #44445e;
-          background: #2c2c3a; cursor: pointer; position: relative; transition: .12s; }
-  .card:hover { border-color: #7fd; transform: translateY(-3px); }
-  .card.dis { opacity: .35; cursor: not-allowed; }
-  .card.selected { border-color: #7fd; background: #1e4a6a; box-shadow: 0 0 10px #2d8cdf; }
-  /* ⚠️ 类名要和 client.js 里的一致（ccost/cname/ctext），
-        之前写成 c/n/t，导致卡牌上的费用/名字/说明全都没样式 */
-  .card .ccost { position: absolute; right: 5px; top: 3px; font-size: 11px; color: #fd6; font-weight: bold; }
-  .card .cname { font-weight: bold; font-size: 13px; margin-bottom: 3px; padding-right: 16px; }
-  .card .ctext { font-size: 11px; color: #aaa; line-height: 1.35; }
-  /* 选牌模式（转转/洗牌/弃牌）下，能点的牌更明显 */
-  #meHand .card:not(.dis) { cursor: pointer; }
-  #meHand .card:not(.dis):hover { border-color: #7fd; }
-  .card.k-attack { border-left: 3px solid #e04a4a; }
-  .card.k-block { border-left: 3px solid #5aa0e0; }
-  .card.k-heal { border-left: 3px solid #4ad06a; }
-  .card.k-economy { border-left: 3px solid #ffd166; }
-  .card.k-status { border-left: 3px solid #a55cff; }
-  .card.k-unit { border-left: 3px solid #ff8c42; }
-  .card.k-special { border-left: 3px solid #8888a0; }
+/* ══════════ 第 2 层：设置抽屉 ══════════ */
+.mask{
+  position:fixed;inset:0;background:rgba(74,53,32,.42);z-index:200;
+  opacity:0;pointer-events:none;transition:opacity .22s;backdrop-filter:blur(2px);
+}
+.mask.show{opacity:1;pointer-events:auto}
+.drawer{
+  position:fixed;top:0;right:0;bottom:0;width:340px;max-width:88vw;
+  background:var(--paper);border-left:4px solid var(--ink);
+  box-shadow:-10px 0 30px rgba(74,53,32,.3);
+  z-index:201;overflow-y:auto;
+  transform:translateX(105%);transition:transform .26s cubic-bezier(.2,1,.3,1);
+  padding:18px 18px 30px;
+}
+.drawer.show{transform:translateX(0)}
+.drawer h3{
+  margin:0 0 4px;font-size:19px;font-weight:900;display:flex;align-items:center;gap:8px;
+}
+.drawer .sub{font-size:12px;color:var(--ink2);font-weight:bold;margin-bottom:16px}
+.sec{margin:0 0 18px;padding:14px 15px 15px;background:#fff9ee;border:3px solid var(--ink);border-radius:18px}
+.sec .t{font-size:13px;color:var(--ink2);margin-bottom:9px;letter-spacing:.5px}
+.sec .btns{display:flex;flex-wrap:wrap;gap:8px}
+.sec .btns button{flex:1;min-width:92px}
+.hr{height:0;border-top:3px dashed rgba(74,53,32,.2);margin:14px 0}
+.mini{font-size:11.5px;color:var(--ink2);font-weight:bold;line-height:1.6}
 
-  #log { height: 190px; overflow-y: auto; font-size: 12px; line-height: 1.6; color: #bbb;
-         background: #101018; padding: 6px; border-radius: 4px; }
-  #prompt { min-height: 40px; padding: 8px; background: #1e2a3a; border: 1px solid #2d4a6a;
-            border-radius: 5px; margin-bottom: 8px; }
-  #prompt h3 { margin: 0 0 6px; font-size: 14px; color: #7fd; }
+/* ══════════ 第 3 层：底部抽屉（战报/诊断）══════════ */
+.dock{
+  position:fixed;left:0;right:0;bottom:0;z-index:150;
+  background:var(--paper);border-top:4px solid var(--ink);
+  box-shadow:0 -8px 24px rgba(74,53,32,.22);
+  transform:translateY(calc(100% - 46px));transition:transform .26s cubic-bezier(.2,1,.3,1);
+  max-height:74vh;display:flex;flex-direction:column;
+}
+.dock.show{transform:translateY(0)}
+.dockbar{
+  height:46px;display:flex;align-items:center;gap:10px;padding:0 16px;
+  cursor:pointer;flex-shrink:0;user-select:none;
+}
+.dockbar .t{font-size:15px;font-weight:900}
+.dockbar .pill{font-size:11.5px;padding:3px 10px;border-radius:12px;background:#fff;
+  border:2.5px solid var(--ink);color:var(--ink2)}
+.dockbar .arrow{margin-left:auto;font-size:15px;transition:transform .25s}
+.dock.show .dockbar .arrow{transform:rotate(180deg)}
+.dockbody{padding:0 16px 16px;overflow-y:auto}
+.logwrap{display:flex;gap:12px}
+#log{
+  flex:2;height:190px;overflow-y:auto;
+  font-size:13px;line-height:1.9;color:#5a4630;
+  background:#fffdf6;border:3px solid var(--ink);border-radius:16px;padding:11px 14px;
+}
+#log div{border-bottom:2px dashed rgba(74,53,32,.12);padding:2px 0}
+#log div:last-child{border-bottom:0}
+#dbgBox{
+  flex:1;height:190px;overflow-y:auto;margin:0;white-space:pre-wrap;
+  font-size:11px;line-height:1.6;font-family:Consolas,monospace;font-weight:normal;
+  background:#f0fff4;color:#2a7a4a;border:3px solid var(--ink);border-radius:16px;padding:11px;
+}
+#fxDiag{
+  height:110px;overflow-y:auto;margin:8px 0 0;white-space:pre-wrap;
+  font-size:11px;line-height:1.6;font-family:Consolas,monospace;font-weight:normal;
+  background:#fffaf0;color:#a06000;border:3px solid var(--ink);border-radius:16px;padding:11px;
+}
+#log::-webkit-scrollbar,#dbgBox::-webkit-scrollbar,#fxDiag::-webkit-scrollbar{width:10px}
+#log::-webkit-scrollbar-thumb,#dbgBox::-webkit-scrollbar-thumb,#fxDiag::-webkit-scrollbar-thumb{
+  background:#ffc93c;border-radius:6px;border:2px solid var(--ink)
+}
 
-  #overlay { position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 100000;
-             display: none; align-items: center; justify-content: center; flex-direction: column; }
-  #overlay.show { display: flex; }
-  #overlay h1 { font-size: 42px; margin: 0 0 16px; }
+/* ══════════ 桌面区 ══════════ */
+.row{display:flex;gap:16px;flex-wrap:wrap;padding:16px;padding-bottom:70px}
+.panel{
+  background:var(--paper);
+  border:4px solid var(--ink);border-radius:22px;
+  padding:14px 16px 16px;
+  box-shadow:0 8px 0 rgba(74,53,32,.16), inset 0 3px 0 rgba(255,255,255,.9);
+}
+.side{flex:1;min-width:340px}
+#mePanel.cur,#oppPanel.cur{
+  border-color:#e0a000;
+  box-shadow:0 8px 0 rgba(224,160,0,.3), 0 0 0 5px rgba(255,201,60,.32), inset 0 3px 0 rgba(255,255,255,.9);
+}
+.panel h2{margin:0 0 10px;font-size:18px;font-weight:900;letter-spacing:1px;display:flex;align-items:center;gap:8px}
+.stat{
+  display:inline-flex;align-items:center;gap:5px;
+  margin:3px 9px 3px 0;padding:4px 11px 5px;
+  font-size:14px;background:#fff;border:2.5px solid var(--ink);border-radius:14px;
+  box-shadow:0 3px 0 rgba(74,53,32,.18);font-variant-numeric:tabular-nums;
+}
+.stat b{font-size:16px;font-weight:900}
+.stat.hp{background:#ffe4e8;border-color:#e8455c;color:#a02038}
+.stat.hp.low{animation:hpHit .8s infinite}
+.stat.hp.crit{animation:hpHit .42s infinite;background:#ffc9d0}
+@keyframes hpHit{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+.stat.en{background:#e0f2ff;border-color:#2b86e0;color:#1a5a9a}
+.stat.hand{background:#fff4cc;border-color:#e0a000;color:#8a6000}
+.stat.deck{background:#f0eaff;border-color:#8a3ce0;color:#5a2a9a}
 
-  /* ============ 手机适配 ============ */
-  @media (max-width: 700px) {
-    body { padding: 6px; font-size: 13px; }
-    .row { flex-direction: column; gap: 6px; }
-    .side { min-width: 0; width: 100%; }
-    .panel { padding: 6px; margin-bottom: 6px; }
-    .hand { gap: 4px; }
-    .card { width: calc(33.33% - 4px); min-height: 76px; padding: 5px; }
-    .card .cname { font-size: 12px; }
-    .card .ctext { font-size: 10px; }
-    button { padding: 8px 10px; font-size: 13px; }
-    h2 { font-size: 14px; }
-    #log { height: 110px; font-size: 11px; }
-    #dbgBox { display: none; }
-    #fxDiag { height: 70px; font-size: 10px; }
-    .stat { margin-right: 10px; }
-  }
-  @media (min-width: 701px) and (max-width: 1000px) {
-    .side { min-width: 260px; }
-    .card { width: 96px; }
-  }
+/* 手牌 */
+.hand{display:flex;gap:11px;flex-wrap:wrap;margin-top:12px;min-height:6px;padding-top:4px}
+.card{
+  position:relative;width:124px;height:172px;padding:11px 11px 12px;
+  border-radius:18px;cursor:pointer;overflow:hidden;color:var(--ink);
+  background:linear-gradient(165deg,#fff 0%, var(--c1,#eee) 42%, var(--c2,#ddd) 100%);
+  border:3.5px solid var(--ink);
+  box-shadow:0 6px 0 var(--c3,#888), 0 8px 14px rgba(74,53,32,.26), inset 0 3px 0 rgba(255,255,255,.6);
+  transition:transform .14s cubic-bezier(.2,1.5,.4,1), box-shadow .14s, filter .14s;
+  user-select:none;
+}
+.card::before{
+  content:"";position:absolute;left:-10%;right:-10%;top:-6px;height:38px;
+  background:linear-gradient(180deg,rgba(255,255,255,.75),rgba(255,255,255,0));border-radius:50%;pointer-events:none;
+}
+.card:hover{
+  transform:translateY(-12px) rotate(0deg) scale(1.07);
+  box-shadow:0 14px 0 var(--c3,#888), 0 18px 22px rgba(74,53,32,.3), inset 0 3px 0 rgba(255,255,255,.7);
+  z-index:30;filter:brightness(1.05);
+}
+.card .cicon{font-size:24px;line-height:1;margin-bottom:3px;display:block;
+  filter:drop-shadow(0 2px 0 rgba(74,53,32,.26))}
+.card .ccost{
+  position:absolute;right:8px;top:8px;min-width:30px;height:30px;padding:0 7px;
+  display:flex;align-items:center;justify-content:center;border-radius:50%;
+  font-size:16px;font-weight:900;color:#5a3c00;
+  background:radial-gradient(circle at 35% 30%,#fff6c4,#ffc93c 60%,#e0a000);
+  border:3px solid var(--ink);box-shadow:0 3px 0 rgba(74,53,32,.32),inset 0 2px 0 rgba(255,255,255,.8);
+  font-variant-numeric:tabular-nums;
+}
+.card .cname{font-size:15px;font-weight:900;letter-spacing:.3px;line-height:1.22;padding-right:32px;
+  text-shadow:0 1px 0 rgba(255,255,255,.85)}
+.card .ctext{margin-top:8px;font-size:11.5px;line-height:1.48;color:#6a5238;
+  text-shadow:0 1px 0 rgba(255,255,255,.7)}
+.card.k-attack {--c1:#ffd0d5;--c2:#ff9aa2;--c3:#e8455c}
+.card.k-block  {--c1:#d0e9ff;--c2:#9ad4ff;--c3:#2b86e0}
+.card.k-heal   {--c1:#d6f5cf;--c2:#a8e6a3;--c3:#3aa83a}
+.card.k-economy{--c1:#fff3c0;--c2:#ffe38a;--c3:#e0a000}
+.card.k-status {--c1:#ecd8ff;--c2:#d4a8ff;--c3:#8a3ce0}
+.card.k-control{--c1:#d0f5f0;--c2:#8ce8dd;--c3:#1a9a8c}
+.card.k-unit   {--c1:#ffe0c0;--c2:#ffc48a;--c3:#e06a00}
+.card.k-special{--c1:#e8e8f4;--c2:#c8c8dc;--c3:#6a6a8a}
+.card.k-draw   {--c1:#ffd9ec;--c2:#ffc4e0;--c3:#e04a94}
+#meHand .card:nth-child(3n+1){transform:rotate(-1.6deg)}
+#meHand .card:nth-child(3n+2){transform:rotate(.8deg)}
+#meHand .card:nth-child(3n+3){transform:rotate(2deg)}
+#meHand .card:nth-child(3n+1):hover,
+#meHand .card:nth-child(3n+2):hover,
+#meHand .card:nth-child(3n+3):hover{transform:translateY(-12px) rotate(0deg) scale(1.07)}
+.card.dis{opacity:.42;cursor:default;filter:grayscale(.7)}
+.card.dis:hover{transform:none;box-shadow:0 6px 0 var(--c3,#888),0 8px 14px rgba(74,53,32,.26)}
+.card.selected{
+  box-shadow:0 6px 0 var(--c3,#888), 0 0 0 5px #ffc93c, 0 10px 18px rgba(74,53,32,.32);
+  transform:translateY(-14px) rotate(0deg) scale(1.08);filter:brightness(1.08);
+}
+.card.selected::after{
+  content:"✔";position:absolute;left:7px;top:6px;width:24px;height:24px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:#6bd06b;border:3px solid var(--ink);color:#fff;font-size:14px;
+  box-shadow:0 2px 0 rgba(74,53,32,.32);
+}
+.card.back{
+  background:repeating-linear-gradient(45deg,rgba(138,60,224,.14) 0 9px,transparent 9px 18px),
+    linear-gradient(165deg,#f0e4ff 0%,#d4a8ff 60%,#ad6bff 100%);
+  cursor:default;
+}
+.card.back::after{content:"★";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:52px;color:rgba(255,255,255,.6);text-shadow:0 3px 0 rgba(74,53,32,.18)}
+
+/* 提示气泡 */
+#prompt{
+  margin:16px 16px 0;padding:16px 20px;min-height:48px;
+  background:var(--paper);border:4px solid var(--ink);border-radius:22px;
+  box-shadow:0 7px 0 rgba(74,53,32,.16), inset 0 3px 0 rgba(255,255,255,.9);
+  position:relative;
+}
+#prompt:empty{display:none}
+#prompt::before{
+  content:"";position:absolute;left:38px;bottom:-16px;width:0;height:0;
+  border:14px solid transparent;border-top-color:var(--ink);border-bottom:0;
+}
+#prompt h3{margin:0 0 10px;font-size:17px;font-weight:900;letter-spacing:.5px}
+#prompt button{margin:4px 8px 6px 0}
+#prompt input{background:#fff;border:3px solid var(--ink);color:var(--ink);
+  padding:7px 11px;border-radius:12px;font-family:inherit;font-weight:bold;font-size:14px}
+#prompt input:focus{outline:none;box-shadow:0 0 0 4px rgba(255,201,60,.5)}
+
+.tag{display:inline-block;padding:3px 11px 4px;margin:3px 5px 3px 0;border-radius:14px;
+  font-size:12px;font-weight:bold;border:2.5px solid var(--ink);
+  background:#ecd8ff;color:#5a2a9a;box-shadow:0 2px 0 rgba(74,53,32,.2)}
+.tag.bad{background:#ffd9de;color:#c02a44;border-color:#e8455c}
+.tag.good{background:#d6f5cf;color:#2a7a2a;border-color:#3aa83a}
+
+/* 结算 */
+#overlay{
+  position:fixed;inset:0;z-index:100000;display:none;
+  align-items:center;justify-content:center;flex-direction:column;
+  background:rgba(74,53,32,.72);backdrop-filter:blur(5px);
+}
+#overlay.show{display:flex;animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+#resultText{
+  font-size:64px;margin:0 0 16px;font-weight:900;letter-spacing:6px;color:#fff;
+  -webkit-text-stroke:4px var(--ink);
+  text-shadow:0 8px 0 #e0a000, 0 14px 24px rgba(0,0,0,.5);
+  animation:winPop .6s cubic-bezier(.2,1.6,.4,1);
+}
+@keyframes winPop{0%{transform:scale(.4) rotate(-8deg);opacity:0}
+  70%{transform:scale(1.14) rotate(3deg);opacity:1}100%{transform:scale(1) rotate(0);opacity:1}}
+#resultSub{color:#ffe9b8;margin-bottom:28px;font-size:16px;text-shadow:0 2px 0 rgba(0,0,0,.4)}
+#overlay button{padding:14px 34px !important;font-size:19px !important;border-radius:18px}
+
+/* ══════════ 手机 ══════════ */
+@media (max-width:780px){
+  body{font-size:14px}
+  .bar{padding:9px 12px;gap:8px}
+  .logo{font-size:17px;padding:3px 11px 5px;border-radius:13px}
+  .turnbar{font-size:14px;padding:7px 12px;border-radius:15px;min-width:110px}
+  button.gear{width:42px;height:42px;font-size:18px}
+  .drawer{width:100%;max-width:100%}
+  .row{flex-direction:column;gap:12px;padding:12px;padding-bottom:66px}
+  .side{min-width:0;width:100%}
+  .panel{padding:11px 12px 13px;border-radius:18px}
+  .hand{gap:8px}
+  .card{width:calc(33.33% - 6px);height:150px;padding:9px 9px 10px;border-radius:15px}
+  .card .cicon{font-size:19px}
+  .card .cname{font-size:13px;padding-right:27px}
+  .card .ctext{font-size:10.5px;line-height:1.4;margin-top:6px}
+  .card .ccost{min-width:25px;height:25px;font-size:13.5px;right:6px;top:6px}
+  .panel h2{font-size:16px}
+  #log{height:130px;font-size:12px;line-height:1.8}
+  #dbgBox{display:none}
+  .logwrap{display:block}
+  #fxDiag{height:76px;font-size:10px}
+  #prompt{margin:12px 12px 0;padding:13px 15px;border-radius:18px}
+  #prompt h3{font-size:15px}
+  #resultText{font-size:40px;letter-spacing:3px;-webkit-text-stroke-width:3px}
+  .stat{font-size:12.5px;padding:3px 9px 4px;margin-right:7px}
+  .stat b{font-size:14px}
+}
+@media (min-width:781px) and (max-width:1150px){
+  .side{min-width:290px}
+  .card{width:110px;height:158px}
+}
 </style>
 </head>
 <body>
 
+<!-- ══════════ 第 1 层：顶栏（只 2 个按钮）══════════ -->
 <div class="bar">
-  <b style="color:#fd6;font-size:17px">卡牌游戏</b>
-  <span id="conn" style="font-size:12px;color:#888">未连接</span>
-  <span id="mode" style="font-size:12px;color:#888"></span>
-  <span id="fxQuality" style="font-size:12px;color:#6a6"></span>
-  <span id="cheatFlag" style="font-size:12px;color:#f66;font-weight:bold;display:none">😈 作弊已开</span>
-  <span style="flex:1"></span>
-  <button class="who" id="btnAsP1">我是玩家1</button>
-  <button class="who" id="btnAsP2">我是玩家2</button>
-  <button class="who" id="btnAsDual">双控模式</button>
-  <span style="color:#444">|</span>
-  <button class="who" id="btnDummyMode" style="border-color:#c09a4a;color:#fed" title="对面是个不会还手的 100 血木桩，用来测动画">🎯 木桩模式</button>
-  <button class="who" id="btnCheatMode" style="border-color:#a04a4a;color:#fdd" title="开启作弊面板：强制核弹、回血、加能量…">😈 作弊</button>
-  <span style="color:#444">|</span>
-  <button class="primary" id="btnStart">开始新游戏</button>
-  <button id="btnEndTurn">结束回合</button>
-  <button class="danger" id="btnReset">重置</button>
+  <span class="logo">🎴 卡牌对决</span>
+  <div class="turnbar" id="turnbar"><span class="dot"></span><span id="turnText">未开始</span></div>
+  <div class="right">
+    <button class="gear" id="btnGear" title="设置">⚙️</button>
+    <button class="primary" id="btnStart">▶ 开始游戏</button>
+    <button id="btnEndTurn" style="display:none">⏭ 结束回合</button>
+  </div>
 </div>
 
+<!-- ══════════ 第 2 层：设置抽屉 ══════════ -->
+<div class="mask" id="mask"></div>
+<div class="drawer" id="drawer">
+  <h3>⚙️ 设置</h3>
+  <div class="sub" id="drawerSub"><span id="conn">未连接</span> · <span id="mode"></span></div>
+
+  <div class="sec">
+    <div class="t">👤 我的身份</div>
+    <div class="btns">
+      <button class="who" id="btnAsP1">玩家1</button>
+      <button class="who" id="btnAsP2">玩家2</button>
+      <button class="who" id="btnAsDual">双控</button>
+    </div>
+    <div class="mini" style="margin-top:9px">两个人玩：一个选玩家1，另一个选玩家2</div>
+  </div>
+
+  <div class="sec">
+    <div class="t">🤖 对手</div>
+    <div class="btns">
+      <button class="who" id="btnAiMode" style="flex:2">🤖 和电脑打</button>
+    </div>
+    <div class="btns" style="margin-top:8px">
+      <button class="ai-diff" data-d="easy">😊 简单</button>
+      <button class="ai-diff" data-d="normal">🙂 普通</button>
+      <button class="ai-diff" data-d="hard">😈 困难</button>
+    </div>
+    <div class="mini" style="margin-top:9px">
+      电脑坐玩家2。它只看公开信息（血量/能量/手牌数），<b>不会偷看你的手牌</b>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="t">🎮 特殊模式</div>
+    <div class="btns">
+      <button class="who" id="btnDummyMode">🎯 木桩模式</button>
+      <button class="who" id="btnCheatMode">😈 作弊模式</button>
+    </div>
+    <div class="mini" style="margin-top:9px">
+      木桩：对面是 100 血不还手的假人，用来试动画<br>
+      作弊：强制核弹、回血、加能量…（只有自己能用）
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="t">🃏 玩法</div>
+    <div class="btns">
+      <a href="cards.html" style="text-decoration:none;flex:1;display:flex">
+        <button class="primary" style="width:100%">📖 卡牌图鉴</button></a>
+      <a href="demo.html" style="text-decoration:none;flex:1;display:flex">
+        <button style="width:100%">🎬 演出演示</button></a>
+    </div>
+    <div class="mini" style="margin-top:9px">图鉴能看到全部 60 张牌，点一下就能看去它的动画</div>
+  </div>
+
+  <div class="sec">
+    <div class="t">🔧 其他</div>
+    <div class="btns">
+      <button class="danger" id="btnReset">↺ 重置</button>
+    </div>
+    <div class="hr"></div>
+    <div class="mini">
+      画质：<span id="fxQuality">自动</span><br>
+      地址栏加 <b>?fxq=low</b> 省性能，<b>?fxq=high</b> 满效果
+    </div>
+  </div>
+
+  <div class="mini" style="text-align:center;opacity:.7">
+    点空白处或右上角关闭
+  </div>
+</div>
+
+<!-- ══════════ 桌面区 ══════════ -->
 <div id="page">
+  <div id="cheatFlag" style="display:none;margin:14px 16px 0;padding:9px 16px;border-radius:16px;
+       background:#ffd9de;border:3px solid #c02a44;color:#a02038;font-weight:900;letter-spacing:1px">
+    😈 作弊模式已开启（右下角有面板，或按数字键 1~9）
+  </div>
   <div id="prompt"></div>
 
   <div class="row">
     <div class="side panel" id="oppPanel">
       <h2 id="oppTitle">对手</h2>
       <div>
-        <span class="stat hp">❤ <b id="oppHp">-</b></span>
-        <span class="stat">⚡ <b id="oppEn">-</b></span>
-        <span class="stat">🃏 <b id="oppHandCount">-</b></span>
-        <span class="stat">📚 <b id="oppDeck">-</b></span>
+        <span class="stat hp" id="oppHpStat">❤️ <b id="oppHp">-</b></span>
+        <span class="stat en">⚡ <b id="oppEn">-</b></span>
+        <span class="stat hand">🃏 <b id="oppHandCount">-</b></span>
+        <span class="stat deck">📚 <b id="oppDeck">-</b></span>
       </div>
-      <div id="oppStatus" style="font-size:12px;color:#fd6;margin-top:4px"></div>
-      <div id="oppInfo" style="font-size:12px;color:#999;margin-top:4px"></div>
+      <div id="oppStatus" style="font-size:12px;margin-top:6px"></div>
+      <div id="oppInfo" style="font-size:12.5px;color:#7a6040;margin-top:6px"></div>
       <div id="oppHand" class="hand"></div>
     </div>
 
     <div class="side panel" id="mePanel">
       <h2 id="meTitle">我</h2>
       <div>
-        <span class="stat hp">❤ <b id="meHp">-</b></span>
-        <span class="stat">⚡ <b id="meEn">-</b></span>
-        <span class="stat">🃏 <b id="meHandCount">-</b></span>
-        <span class="stat">📚 <b id="meDeck">-</b></span>
+        <span class="stat hp" id="meHpStat">❤️ <b id="meHp">-</b></span>
+        <span class="stat en">⚡ <b id="meEn">-</b></span>
+        <span class="stat hand">🃏 <b id="meHandCount">-</b></span>
+        <span class="stat deck">📚 <b id="meDeck">-</b></span>
       </div>
-      <div id="meStatus" style="font-size:12px;color:#fd6;margin-top:4px"></div>
-      <div id="meInfo"></div>
+      <div id="meStatus" style="font-size:12px;margin-top:6px"></div>
+      <div id="meInfo" style="font-size:12.5px;color:#7a6040;margin-top:6px"></div>
       <div id="meHand" class="hand"></div>
     </div>
   </div>
 </div>
 
-<div class="panel">
-  <h2>日志 <span style="font-size:11px;color:#666">（右边是调试信息，卡住的时候看这里）</span></h2>
-  <div style="display:flex;gap:10px">
-    <div id="log" style="flex:2"></div>
-    <pre id="dbgBox" style="flex:1;height:190px;overflow-y:auto;font-size:11px;line-height:1.5;background:#101018;color:#8c8;padding:6px;border-radius:4px;margin:0;white-space:pre-wrap"></pre>
+<!-- ══════════ 第 3 层：底部抽屉 ══════════ -->
+<div class="dock" id="dock">
+  <div class="dockbar" id="dockbar">
+    <span class="t">📜 战报</span>
+    <span class="pill" id="dockHint">点这里展开</span>
+    <span class="arrow">▲</span>
   </div>
-  <h2 style="margin-top:10px">🎬 演出诊断 <span style="font-size:11px;color:#666">（出牌后这里应该出现 "新的 N 条"）</span></h2>
-  <div style="margin-bottom:6px">
-    <button id="btnFxCannon" style="background:#2d6cdf;color:#fff;border:0;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:13px">🧪 测试动画（打一发核弹）</button>
-    <button id="btnFxCheck" style="background:#3a3a48;color:#fff;border:0;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:13px;margin-left:6px">🔍 检查环境</button>
+  <div class="dockbody">
+    <div class="logwrap">
+      <div id="log"></div>
+      <pre id="dbgBox"></pre>
+    </div>
+    <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:12px 0 0">
+      <span style="font-size:15px;font-weight:900">🎬 演出诊断</span>
+      <button class="ghost" id="btnFxCannon" style="border:2.5px solid var(--ink);border-radius:11px;box-shadow:0 3px 0 var(--ink)">🧪 测试核弹</button>
+      <button class="ghost" id="btnFxCheck" style="border:2.5px solid var(--ink);border-radius:11px;box-shadow:0 3px 0 var(--ink)">🔍 检查环境</button>
+      <span class="mini">出牌后这里应该出现「新的 N 条」</span>
+    </div>
+    <pre id="fxDiag"></pre>
   </div>
-  <pre id="fxDiag" style="height:130px;overflow-y:auto;font-size:11px;line-height:1.5;background:#101018;color:#fc6;padding:6px;border-radius:4px;margin:0;white-space:pre-wrap"></pre>
 </div>
 
-<!-- 结算画面 -->
 <div id="overlay">
   <h1 id="resultText">胜利！</h1>
-  <div id="resultSub" style="color:#aaa;margin-bottom:20px"></div>
-  <button class="primary" id="btnAgain" style="padding:10px 22px;font-size:15px">再来一局</button>
-  <button id="btnCloseResult" style="padding:10px 22px;font-size:15px;margin-top:8px">关闭</button>
+  <div id="resultSub"></div>
+  <button class="primary" id="btnAgain">🎉 再来一局</button>
+  <button id="btnCloseResult" style="margin-top:12px">关闭</button>
 </div>
 
-<!-- 🎬 演出层（fx.js 需要这两个容器，缺了动画就全都不显示） -->
 <div id="fx-flash"></div>
 <div id="fx"></div>
 
-<script src="fx.js?v=20"></script>
-<script src="client.js?v=31"></script>
+<script>
+// ══════════════════════════════════════════════════════
+//  分层界面：设置抽屉 + 底部抽屉 + 回合提示条
+//    （放在 client.js 之前，先把 UI 骨架准备好）
+// ══════════════════════════════════════════════════════
+(function layeredUI() {
+  const mask = document.getElementById("mask");
+  const drawer = document.getElementById("drawer");
+  const dock = document.getElementById("dock");
+  const dockbar = document.getElementById("dockbar");
+  const dockHint = document.getElementById("dockHint");
+
+  function openDrawer() { mask.classList.add("show"); drawer.classList.add("show"); }
+  function closeDrawer() { mask.classList.remove("show"); drawer.classList.remove("show"); }
+  window.__openDrawer = openDrawer;
+  window.__closeDrawer = closeDrawer;
+  window.__setDockHint = function (txt) { if (dockHint) dockHint.textContent = txt; };
+
+  document.getElementById("btnGear").onclick = function () {
+    drawer.classList.contains("show") ? closeDrawer() : openDrawer();
+  };
+  mask.onclick = closeDrawer;
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") closeDrawer();
+  });
+
+  // 底部抽屉：点标题栏展开/收起
+  dockbar.onclick = function () { dock.classList.toggle("show"); };
+  // 出牌时自动提示一下"来看看战报"
+  window.__dockPing = function () {
+    if (!dock.classList.contains("show")) {
+      dockHint.textContent = "有新战报！";
+      dockHint.style.background = "#fff3c0";
+    }
+  };
+})();
+</script>
+<script src="fx.js?v=26"></script>
+<script src="client.js?v=37"></script>
 </body>
 </html>

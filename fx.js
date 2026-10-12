@@ -1865,6 +1865,7 @@
     "核弹": "nuke", "斩杀": "execute", "雪球": "snowball", "苦无": "multi",
     "血刃": "blood", "刀": "slash", "手术刀": "slash", "狙击枪": "snipe",
     "木棍": "hit-light", "石头": "hit-light",
+    "土豆地雷": "mine",
     "毒鸡汤": "poison", "腐肉": "poison", "焚烧": "burning",
     "黑洞": "blackhole", "硫酸": "acid", "断头台": "guillotine",
     "苦肉计": "selfharm", "转换": "convert", "幸运儿": "lucky",
@@ -4114,7 +4115,7 @@
         { transform: "translate(0,0) scale(1)", opacity: 1 },
         { transform: "translate(" + ox * 0.6 + "px," + oy * 0.6 + "px) scale(.9)", opacity: 1, offset: 0.55 },
         { transform: "translate(" + ox + "px," + (oy + spd * 0.9) + "px) scale(.2)", opacity: 0 },
-      ], { duration:(520 + Math.random() * 420), easing: "cubic-bezier(.2,.7,.4,1)", fill: "forwards" })
+      ], { duration: bT(520 + Math.random() * 420), easing: "cubic-bezier(.2,.7,.4,1)", fill: "forwards" })
         .onfinish = function () { s.remove(); };
     }
   }
@@ -4294,7 +4295,7 @@
       { opacity: 0, transform: "translate(-50%," + (-260) + "px) rotate(-16deg) scale(.7)" },
       { opacity: 1, transform: "translate(-50%,-50%) translateY(10px) rotate(3deg) scale(1.06)", offset: .72 },
       { opacity: 1, transform: "translate(-50%,-50%) translateY(0) rotate(0deg) scale(1)" },
-    ], { duration:(420), easing: "cubic-bezier(.4,1.5,.5,1)", fill: "forwards" })
+    ], { duration: bT(420), easing: "cubic-bezier(.4,1.5,.5,1)", fill: "forwards" })
       .onfinish = function () { try { b.wrap.style.transform = "translate(-50%,-50%)"; } catch (e) { } };
 
     // 落地：震一下 + 一圈灰
@@ -4304,8 +4305,8 @@
       bombSpark(bombPos.x, bombPos.y + 52, "#ffcf8a", 12, 90);
       shake("light");
       b.ring.animate([{ transform: "scale(1)", opacity: .5 }, { transform: "scale(1.5)", opacity: 0 }],
-        { duration:(420), fill: "forwards" });
-    },(400));
+        { duration: bT(420), fill: "forwards" });
+    }, bT(400));
 
     // 常驻跳动：计时器跳字 + 引信冒火星 + 抖动
     let n = 0, cnt = 10;
@@ -4322,7 +4323,7 @@
         try { b.num.textContent = (cnt < 10 ? "0" : "") + cnt; } catch (e) { }
         b.num.animate([{ opacity: 1, transform: "scale(1)" },
           { opacity: .45, transform: "scale(.94)" }, { opacity: 1, transform: "scale(1)" }],
-          { duration:(150) });
+          { duration: bT(150) });
       }
       // 整颗炸弹轻微抖动（危险度越高抖得越明显）
       const amp = b.danger * .8;
@@ -4331,15 +4332,15 @@
         { transform: "translate(-50%,-50%) rotate(" + (amp) + "deg)" },
         { transform: "translate(-50%,-50%) rotate(" + (-amp) + "deg)" },
         { transform: "translate(-50%,-50%) rotate(0deg)" },
-      ], { duration:(180 + (4 - b.danger) * 60), easing: "ease-in-out" });
+      ], { duration: bT(180 + (4 - b.danger) * 60), easing: "ease-in-out" });
       // 光晕呼吸
-      b.ring.animate([{ opacity: .30 + Math.sin(n * .9) * .22 }, { opacity: .62 }], { duration:(300) });
+      b.ring.animate([{ opacity: .30 + Math.sin(n * .9) * .22 }, { opacity: .62 }], { duration: bT(300) });
       // 隔一会儿来一圈扩散环
       if (n % 5 === 0) {
         b.ring.animate([{ transform: "scale(1)", opacity: .5 }, { transform: "scale(1.45)", opacity: 0 }],
-          { duration:(560), fill: "forwards" });
+          { duration: bT(560), fill: "forwards" });
       }
-    },(190));
+    }, bT(190));
   }
 
   // 滚动/窗口变化时跟着面板走
@@ -4356,8 +4357,8 @@
     const R = 130 + danger * 26;
 
     // 极短的白闪（爆炸的"第一瞬"）
-    flash("#fff",(90));
-    setTimeout(function () { flash("#ffb060",(130)); },(70));
+    flash("#fff", bT(90));
+    setTimeout(function () { flash("#ffb060", bT(130)); }, bT(70));
 
     // 火球（多层叠加）
     const ball = document.createElement("div");
@@ -4372,18 +4373,18 @@
       { transform: "scale(1.15)", opacity: 0.95, offset: 0.42 },
       { transform: "scale(1.5)", opacity: 0.5, offset: 0.7 },
       { transform: "scale(1.9)", opacity: 0 },
-    ], { duration:(620), easing: "cubic-bezier(.1,.8,.3,1)", fill: "forwards" })
+    ], { duration: bT(620), easing: "cubic-bezier(.1,.8,.3,1)", fill: "forwards" })
       .onfinish = function () { ball.remove(); };
 
     // 冲击环（两圈，错开）
     setTimeout(function () {
       ring(x, y, "#fff", 18);
       shake("heavy");
-    },(30));
+    }, bT(30));
     setTimeout(function () {
       ring(x, y, "#ff9a3c", 30);
       ring(x, y, "#ffd166", 44);
-    },(140));
+    }, bT(140));
 
     // 火光柱（向上的橙光）
     const beam = document.createElement("div");
@@ -4396,7 +4397,7 @@
     beam.animate([{ opacity: 0, transform: "scaleY(.2)" },
       { opacity: .95, transform: "scaleY(1)", offset: .3 },
       { opacity: 0, transform: "scaleY(1.25)" }],
-      { duration:(760), easing: "ease-out", fill: "forwards" })
+      { duration: bT(760), easing: "ease-out", fill: "forwards" })
       .onfinish = function () { beam.remove(); };
 
     // 碎片 + 火花
@@ -4421,7 +4422,7 @@
         { transform: "translate(0,0) rotate(0deg)", opacity: 1 },
         { transform: "translate(" + ox + "px," + oy + "px) rotate(" + (Math.random() * 720 - 360) + "deg)", opacity: 1, offset: .55 },
         { transform: "translate(" + (ox * 1.25) + "px," + (oy + 260) + "px) rotate(" + (Math.random() * 900 - 450) + "deg)", opacity: 0 },
-      ], { duration:(1200 + Math.random() * 400), easing: "cubic-bezier(.2,.6,.5,1)", fill: "forwards" })
+      ], { duration: bT(1200 + Math.random() * 400), easing: "cubic-bezier(.2,.6,.5,1)", fill: "forwards" })
         .onfinish = function () { s.remove(); };
     }
 
@@ -4443,9 +4444,9 @@
           { transform: "scale(1) translateY(-40px)", opacity: .9, offset: .3 },
           { transform: "scale(1.6) translateY(-150px)", opacity: .45, offset: .65 },
           { transform: "scale(2.1) translateY(-260px)", opacity: 0 },
-        ], { duration:(2000 + Math.random() * 900), easing: "ease-out", fill: "forwards" })
+        ], { duration: bT(2000 + Math.random() * 900), easing: "ease-out", fill: "forwards" })
           .onfinish = function () { p.remove(); };
-      },(120 + i * 55));
+      }, bT(120 + i * 55));
     }
 
     // 地面焦痕（在目标位置留一下）
@@ -4457,8 +4458,255 @@
       "filter:blur(" + qb(5) + "px);";
     fxLayer.appendChild(scorch);
     scorch.animate([{ opacity: 0 }, { opacity: .9, offset: .25 }, { opacity: .85, offset: .7 }, { opacity: 0 }],
-      { duration:(2600), fill: "forwards" }).onfinish = function () { scorch.remove(); };
+      { duration: bT(2600), fill: "forwards" }).onfinish = function () { scorch.remove(); };
   }
+
+  // ============================================================
+  //  🥔 土豆地雷
+  //    和定时炸弹同一套思路：徽章常驻在被埋那一方的面板上
+  //      · 一颗带泥的土豆 + 顶上的金属引信 + 一闪一闪的红灯 + 露出的引线
+  //      · 泥土慢慢往下掉（土屑粒子）
+  //      · 红灯按节奏闪（提示"下回合你出牌就炸"）
+  //    踩爆时：小范围爆炸 + 泥块四溅 + 冲击环 + 地上一圈坑
+  // ============================================================
+  let mineBadge = null;
+  let mineTick = null;
+  let mineOnResize = null;
+
+  function makeMineBadge() {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "position:fixed;left:0;top:0;pointer-events:none;z-index:9996;" +
+      "transform:translate(-50%,-50%);";
+
+    // 一小堆土（底座）
+    const dirt = document.createElement("div");
+    const DW = 150, DH = 46;
+    dirt.style.cssText = "position:absolute;left:" + (-DW / 2) + "px;top:" + (18) + "px;width:" + DW +
+      "px;height:" + DH + "px;border-radius:50%;" +
+      "background:radial-gradient(ellipse at 45% 35%, #5a4630 0%, #3a2c1c 45%, #241a10 100%);" +
+      "box-shadow:0 6px 14px rgba(0,0,0,.75), inset 0 -4px 10px rgba(0,0,0,.6);";
+    wrap.appendChild(dirt);
+    // 土堆上的小石子（让它不像一个纯椭圆）
+    for (let i = 0; i < 7; i++) {
+      const st = document.createElement("div");
+      const ss = 3 + Math.random() * 5;
+      st.style.cssText = "position:absolute;left:" + (Math.random() * DW - DW / 2) + "px;top:" +
+        (14 + Math.random() * 18) + "px;width:" + ss + "px;height:" + (ss * .8) + "px;border-radius:40%;" +
+        "background:rgba(120,100,74,.85);";
+      wrap.appendChild(st);
+    }
+
+    // 土豆本体（不规则的椭圆 + 斑点）
+    const potato = document.createElement("div");
+    const PW = 76, PH = 58;
+    potato.style.cssText = "position:absolute;left:" + (-PW / 2) + "px;top:" + (-PH / 2 + 6) + "px;width:" + PW +
+      "px;height:" + PH + "px;border-radius:48% 52% 46% 54% / 55% 48% 52% 45%;" +
+      "background:radial-gradient(ellipse at 34% 28%, #d9b57a 0%, #b58b52 26%, #8a6438 55%, #4e3620 100%);" +
+      "box-shadow:inset -6px -8px 16px rgba(0,0,0,.55), inset 4px 5px 12px rgba(255,236,190,.28)," +
+      "0 4px 12px rgba(0,0,0,.7);";
+    wrap.appendChild(potato);
+    // 土豆的"眼"（小凹点）
+    const eyes = [[-18, -8], [10, -14], [-6, 8], [20, 6], [-24, 10], [16, -2]];
+    for (const [ex, ey] of eyes) {
+      const e = document.createElement("div");
+      const es = 5 + Math.random() * 4;
+      e.style.cssText = "position:absolute;left:" + (-PW / 2 + PW / 2 + ex) + "px;top:" + (-PH / 2 + 6 + PH / 2 + ey) +
+        "px;width:" + es + "px;height:" + (es * .7) + "px;border-radius:50%;" +
+        "background:rgba(60,40,22,.75);box-shadow:inset 1px 1px 2px rgba(0,0,0,.7);";
+      wrap.appendChild(e);
+    }
+
+    // 金属引信（顶上那个盖子）
+    const fuse = document.createElement("div");
+    fuse.style.cssText = "position:absolute;left:-13px;top:" + (-PH / 2 - 8) + "px;width:26px;height:22px;" +
+      "border-radius:5px 5px 3px 3px;background:linear-gradient(180deg,#e6e6ee,#9a9aa8 44%,#4a4a56 100%);" +
+      "box-shadow:0 2px 5px rgba(0,0,0,.8), inset 0 1px 2px rgba(255,255,255,.5);";
+    wrap.appendChild(fuse);
+
+    // 引线（从盖子斜着伸出来）
+    const wire = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    wire.setAttribute("width", "62"); wire.setAttribute("height", "50");
+    wire.style.cssText = "position:absolute;left:8px;top:" + (-PH / 2 - 46) + "px;overflow:visible;";
+    const wp = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    wp.setAttribute("d", "M6 44 C 14 22, 34 10, 56 16");
+    wp.setAttribute("fill", "none");
+    wp.setAttribute("stroke", "#c8a05a");
+    wp.setAttribute("stroke-width", "3.5");
+    wp.setAttribute("stroke-linecap", "round");
+    wire.appendChild(wp);
+    wrap.appendChild(wire);
+
+    // 红灯（会闪）
+    const led = document.createElement("div");
+    led.style.cssText = "position:absolute;left:-6px;top:" + (-PH / 2 - 14) + "px;width:13px;height:13px;" +
+      "border-radius:50%;background:radial-gradient(circle,#fff 0%,#ff8a8a 30%,#ff2020 62%,#8a0000 100%);" +
+      "box-shadow:0 0 12px #ff2020,0 0 26px rgba(255,40,40,.7);";
+    wrap.appendChild(led);
+
+    // 危险提示字
+    const tag = document.createElement("div");
+    tag.textContent = "🥔 踩到就炸";
+    tag.style.cssText = "position:absolute;left:-52px;top:" + (DH + 24) + "px;width:104px;text-align:center;" +
+      "font-size:12px;font-weight:bold;color:#ffb060;text-shadow:0 0 8px rgba(0,0,0,.95),0 0 14px rgba(255,120,0,.6);";
+    wrap.appendChild(tag);
+
+    fxLayer.appendChild(wrap);
+    return { wrap: wrap, potato: potato, led: led, dirt: dirt };
+  }
+
+  function placeMineBadge() {
+    if (!mineBadge) return;
+    const el = document.getElementById(mineBadge.panelId || "oppPanel") || document.getElementById("oppPanel");
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width * 0.5;
+    const y = Math.max(70, r.top - 52);
+    mineBadge.pos = { x: x, y: y };
+    mineBadge.wrap.style.left = x + "px";
+    mineBadge.wrap.style.top = y + "px";
+  }
+
+  // 显示/更新地雷徽章（被埋那一方）
+  function syncMine(info) {
+    if (!info || !info.who) {
+      if (mineBadge) {
+        const b = mineBadge;
+        mineBadge = null;
+        if (mineTick) { clearInterval(mineTick); mineTick = null; }
+        if (mineOnResize) {
+          window.removeEventListener("scroll", mineOnResize, true);
+          window.removeEventListener("resize", mineOnResize);
+          mineOnResize = null;
+        }
+        try {
+          b.wrap.animate([{ opacity: 1 }, { opacity: 0, transform: "translate(-50%,-50%) scale(.8)" }],
+            { duration: 240, fill: "forwards" }).onfinish = function () { b.wrap.remove(); };
+        } catch (e) { try { b.wrap.remove(); } catch (e2) { } }
+      }
+      return;
+    }
+    const panelId = info.who === "me" ? "mePanel" : "oppPanel";
+    if (mineBadge && mineBadge.panelId === panelId) { placeMineBadge(); return; }
+    if (mineBadge) syncMine(null);
+
+    const b = makeMineBadge();
+    b.panelId = panelId;
+    b.pos = { x: 0, y: 0 };
+    mineBadge = b;
+    placeMineBadge();
+
+    // 埋进去的入场：从下面"钻"出来 + 土扬起
+    b.wrap.animate([
+      { opacity: 0, transform: "translate(-50%,-50%) translateY(28px) scale(.7)" },
+      { opacity: 1, transform: "translate(-50%,-50%) translateY(-6px) scale(1.08)", offset: .68 },
+      { opacity: 1, transform: "translate(-50%,-50%) translateY(0) scale(1)" },
+    ], { duration: bT(460), easing: "cubic-bezier(.3,1.5,.5,1)", fill: "forwards" })
+      .onfinish = function () { try { b.wrap.style.transform = "translate(-50%,-50%)"; } catch (e) { } };
+
+    // 入场时扬一把土
+    setTimeout(function () {
+      if (!mineBadge || mineBadge !== b) return;
+      mineDirtBurst(b.pos.x, b.pos.y + 26, 14, 130);
+      shake("light");
+      ring(b.pos.x, b.pos.y + 30, "#8a6a3a", 10);
+    }, bT(400));
+
+    // 常驻：红灯闪 + 土屑掉 + 轻微抖动
+    let n = 0;
+    mineTick = setInterval(function () {
+      if (!mineBadge || mineBadge !== b) return;
+      n++;
+      // 红灯两下快闪，停一下（像真雷的指示灯）
+      const phase = n % 6;
+      if (phase < 2) {
+        b.led.animate([{ opacity: 1, transform: "scale(1.25)" }, { opacity: .25, transform: "scale(.85)" }],
+          { duration: bT(150) });
+      }
+      // 土屑往下掉
+      if (n % 3 === 0) mineDirtBurst(b.pos.x, b.pos.y + 22, 2, 40, true);
+      // 土豆轻微"呼吸"（像里面有东西在动）
+      b.potato.animate([
+        { transform: "scale(1) rotate(0deg)" },
+        { transform: "scale(1.04) rotate(-1.5deg)", offset: .5 },
+        { transform: "scale(1) rotate(0deg)" },
+      ], { duration: bT(900), easing: "ease-in-out" });
+    }, bT(230));
+  }
+
+  // 泥土粒子（往上扬 or 往下掉）
+  function mineDirtBurst(x, y, n, spd, falling) {
+    const c = qc(n);
+    for (let i = 0; i < c; i++) {
+      const s = document.createElement("div");
+      const sz = 2 + Math.random() * 4;
+      s.style.cssText = "position:fixed;left:" + x + "px;top:" + y + "px;width:" + sz + "px;height:" +
+        (sz * .85) + "px;border-radius:35%;background:" +
+        (Math.random() < .5 ? "#6a5236" : "#4a3822") + ";pointer-events:none;z-index:9997;";
+      fxLayer.appendChild(s);
+      const a = falling ? (Math.PI / 2 + (Math.random() - .5) * .8) : (-Math.PI / 2 + (Math.random() - .5) * 2.2);
+      const d = spd * (.4 + Math.random() * .8) * (falling ? .5 : 1);
+      const ox = Math.cos(a) * d, oy = Math.sin(a) * d;
+      s.animate([
+        { transform: "translate(0,0) rotate(0deg)", opacity: 1 },
+        { transform: "translate(" + ox + "px," + oy + "px) rotate(" + (Math.random() * 240 - 120) + "deg)", opacity: 1, offset: .6 },
+        { transform: "translate(" + (ox * 1.1) + "px," + (oy + (falling ? 60 : 90)) + "px) rotate(" + (Math.random() * 360) + "deg)", opacity: 0 },
+      ], { duration: bT(falling ? 700 : 900 + Math.random() * 400), easing: "cubic-bezier(.3,.6,.5,1)", fill: "forwards" })
+        .onfinish = function () { s.remove(); };
+    }
+  }
+
+  mineOnResize = function () { placeMineBadge(); };
+  window.addEventListener("scroll", mineOnResize, true);
+  window.addEventListener("resize", mineOnResize);
+
+  // 踩爆：小范围爆炸 + 泥块四溅 + 冲击环 + 地上一圈坑
+  function mineBlast(x, y) {
+    // 白闪 + 橙闪（比定时炸弹短、小）
+    flash("#fff", bT(70));
+    setTimeout(function () { flash("#ffb060", bT(100)); }, bT(50));
+
+    // 火球（小）
+    const R = 110;
+    const ball = document.createElement("div");
+    ball.style.cssText = "position:fixed;left:" + x + "px;top:" + y + "px;width:" + R + "px;height:" + R +
+      "px;margin-left:" + (-R / 2) + "px;margin-top:" + (-R / 2) + "px;border-radius:50%;pointer-events:none;" +
+      "z-index:9998;background:radial-gradient(circle,#fff 0%,#fff0b0 20%,#ffa63c 44%,#ff5a10 66%,rgba(160,60,0,.5) 84%,rgba(0,0,0,0) 100%);" +
+      "filter:blur(" + qb(2) + "px);";
+    fxLayer.appendChild(ball);
+    ball.animate([
+      { transform: "scale(.08)", opacity: 1 },
+      { transform: "scale(.6)", opacity: 1, offset: .16 },
+      { transform: "scale(1.2)", opacity: .95, offset: .45 },
+      { transform: "scale(1.7)", opacity: 0 },
+    ], { duration: bT(460), easing: "cubic-bezier(.1,.85,.3,1)", fill: "forwards" })
+      .onfinish = function () { ball.remove(); };
+
+    // 冲击环
+    setTimeout(function () { ring(x, y, "#fff", 14); shake("mid"); }, bT(20));
+    setTimeout(function () { ring(x, y + 10, "#c8a05a", 26); }, bT(110));
+
+    // 泥块四溅（往上 + 往外，然后落下）
+    mineDirtBurst(x, y + 10, 26, 240);
+    // 火花
+    bombSpark(x, y, "#ffe066", 14, 200);
+    bombSpark(x, y, "#ff8a3c", 12, 260);
+    burst(x, y, { count: 20, size: 10, speed: 330, life: 1100, colors: ["#fff", "#ffd166", "#8a6a3a", "#5a4630"] });
+
+    // 地上一圈坑（焦痕 + 坑）
+    const pit = document.createElement("div");
+    const PW = 150, PH = 46;
+    pit.style.cssText = "position:fixed;left:" + x + "px;top:" + (y + 14) + "px;width:" + PW + "px;height:" + PH +
+      "px;margin-left:" + (-PW / 2) + "px;margin-top:" + (-PH / 2) + "px;border-radius:50%;pointer-events:none;" +
+      "z-index:9995;background:radial-gradient(ellipse, rgba(14,8,4,.85) 0%, rgba(40,26,14,.6) 40%, rgba(90,70,48,.35) 62%, rgba(0,0,0,0) 82%);" +
+      "filter:blur(" + qb(3) + "px);";
+    fxLayer.appendChild(pit);
+    pit.animate([{ opacity: 0, transform: "scale(.5)" }, { opacity: 1, transform: "scale(1)", offset: .2 },
+      { opacity: .8, offset: .65 }, { opacity: 0 }],
+      { duration: bT(2400), fill: "forwards" }).onfinish = function () { pit.remove(); };
+  }
+
+  // 🥔 demo 页用：点一下轮换"埋雷 / 踩爆"
+  let _mineStep = -1;
 
   function simpleFx(name, opts) {
     opts = opts || {};
@@ -4476,6 +4724,16 @@
       //    timebomb-badge：把炸弹徽章挂到对方面板上（常驻，会一直跳字）
       //    timebomb-blast：爆炸
       case "timebomb-badge": syncBomb({ who: "opp", danger: opts.count || 1 }); return;
+      // 🥔 土豆地雷
+      case "mine-badge": syncMine({ who: "opp" }); return;
+      case "mine-blast": syncMine(null); mineBlast(x, y); return;
+      // 🥔 demo 页用：点一下轮换"埋雷 / 踩爆"
+      case "mine": {
+        _mineStep = (_mineStep + 1) % 2;
+        if (_mineStep === 0) { syncMine({ who: "opp" }); return; }
+        syncMine(null);
+        mineBlast(x, y); return;
+      }
       case "timebomb-blast": timebombBlast(x, y, opts.count || 1); return;
       // 💣 demo 页用：点一下轮换"挂徽章 / 爆一下"
   let _tbStep = -1;
@@ -4828,6 +5086,7 @@
     PANEL_STATUS_CLASS, PANEL_STATUS_EDGE,
     playCardFx, castFx, simpleFx, CARD_FX, CARD_SFX,
     syncBomb, timebombBlast,
+    syncMine, mineBlast,
     sfx, unlockAudio, playNamed, setVolume, getVolume, preloadFiles,
     sfxFall, sfxSlam,
     getAudioState: function () { return audioCtx ? audioCtx.state : "none"; },

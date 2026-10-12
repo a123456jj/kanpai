@@ -77,6 +77,20 @@ function fxSyncBomb(iAm) {
   } catch (e) { dbg("炸弹徽章出错: " + e.message); }
 }
 
+// 🥔 土豆地雷徽章：把"谁身上埋着雷"同步给 fx.js（常驻显示在那一方面板上）
+function fxSyncMine(iAm) {
+  if (typeof FX === "undefined" || !FX.syncMine) return;
+  try {
+    if (!S || !S.mineOn) { FX.syncMine(null); return; }
+    const mineMe = (iAm >= 0) && !!S.mineOn[iAm];
+    const mineOpp = (iAm >= 0) ? !!S.mineOn[1 - iAm] : !!S.mineOn[1];
+    // 优先显示对手身上的（更醒目）
+    if (mineOpp) FX.syncMine({ who: "opp" });
+    else if (mineMe) FX.syncMine({ who: "me" });
+    else FX.syncMine(null);
+  } catch (e) { dbg("地雷徽章出错: " + e.message); }
+}
+
 // 定时炸弹被抽到时的警示（只在弹窗第一次出现时播一次）
 //   新设计下炸弹徽章是常驻的，"抽到"这一下只做一个红色闪烁提示
 let fxBombWarned = false;
@@ -123,6 +137,11 @@ function fxProcessEvents(events, myIdx) {
           const p = fxPosOf(e.defender, myIdx);
           if (typeof FX !== "undefined" && FX.timebombBlast) FX.timebombBlast(p.x, p.y, e.bombCount || 1);
           dbg("💣 定时炸弹爆炸：玩家" + (e.defender + 1) + " 吃 " + e.amount + " 点");
+        } else if (e.card === "土豆地雷" || e.mineBoom) {
+          // 🥔 土豆地雷：踩爆了 → 小范围爆炸 + 泥块四溅
+          const p = fxPosOf(e.defender, myIdx);
+          if (typeof FX !== "undefined" && FX.mineBlast) FX.mineBlast(p.x, p.y);
+          dbg("🥔 土豆地雷踩爆：玩家" + (e.defender + 1) + " 吃 " + e.amount + " 点");
         } else {
           // 🎯 真打中 → 播这张牌的完整演出
           //   召唤类例外：召唤演出由 summon 事件负责（单位攻击的伤害不重复播一遍召唤动画）
@@ -244,7 +263,7 @@ function connect() {
           " 阶段=" + (S ? S.phase : "已重置"));
       if (!S) {
         // 游戏已重置：清空画面
-        setPrompt('<h3>已重置 —— 点【开始新游戏】开一局</h3>');
+        setPrompt('<h3>已重置 —— 点右上角【▶ 开始游戏】开一局</h3>');
         $("meInfo").innerHTML = ""; $("oppInfo").innerHTML = "";
         $("meHand").innerHTML = ""; $("oppHand").innerHTML = "";
         $("log").innerHTML = "";
@@ -292,14 +311,25 @@ async function loadCards() {
 
 // ---------- 渲染 ----------
 function statLine(x, isMe) {
-  const cls = x.hp <= 8 ? "hp" : "hp";
-  return `<span class="stat ${cls}">❤ ${x.hp}</span>
-          <span class="stat">⚡ <b>${x.energy}</b>/${x.maxEnergy}</span>
+  return `<span class="stat">⚡ <b>${x.energy}</b>/${x.maxEnergy}</span>
           <span class="stat">🃏 ${isMe ? x.hand.length : x.handCount}/${x.handLimit !== undefined ? x.handLimit : 5}</span>
           <span class="stat">📚 ${x.deckCount}</span>
           ${x.shield ? `<span class="stat">🛡 ${x.shield}</span>` : ""}
           ${x.skipNext ? `<span class="tag bad">下回合不能出牌</span>` : ""}
           ${x.thorns ? `<span class="tag good">反甲</span>` : ""}`;
+}
+
+// 血量：低了变红 + 闪（新 UI 用）
+function fxHpClass(hp) {
+  if (hp <= 5) return "stat hp crit";
+  if (hp <= 10) return "stat hp low";
+  return "stat hp";
+}
+function fxHpTick(which, hp) {
+  const el = document.getElementById(which + "HpStat");
+  if (el) el.className = fxHpClass(hp);
+  const b = document.getElementById(which + "Hp");
+  if (b) b.textContent = hp;
 }
 
 function statusTags(list) {
@@ -338,7 +368,8 @@ function renderHand(container, hand, mine) {
       div.classList.add("selected");
     }
     if (!mine) div.classList.add("dis");
-    div.innerHTML = `<div class="ccost">${c.cost}</div>
+    div.innerHTML = `<div class="cicon">${cardIcon(name, c.kind)}</div>
+      <div class="ccost">${c.cost}</div>
       <div class="cname">${name}</div>
       <div class="ctext">${c.text || ""}</div>`;
     if (mine) div.onclick = () => onCardClick(name);
@@ -346,17 +377,101 @@ function renderHand(container, hand, mine) {
   }
 }
 
+// 🎨 每张牌的小图标（卡通版：让手牌一眼能认出来）
+const CARD_ICON = {
+  // 攻击
+  "一拳": "👊", "木棍": "🪵", "石头": "🪨", "手术刀": "🔪", "刀": "🗡️", "血刃": "🩸",
+  "雪球": "❄️", "闪电": "⚡", "狙击枪": "🎯", "苦无": "✴️", "核弹": "☢️", "天崩地裂": "🌋",
+  "斩杀": "💀", "西瓜": "🍉", "转头": "🔄", "溜溜球": "🪀",
+  // 防御
+  "飞轮": "🌀", "名刀": "⚔️", "圣诞树": "🎄", "盾反": "🛡️", "水晶盾": "💎", "镇定剂": "💉",
+  // 治疗
+  "牛奶": "🥛", "医疗包": "🩹", "回光返照": "✨", "腐肉": "🍖",
+  // 经济
+  "胡萝卜": "🥕", "欠钱": "💸", "奖励箱": "🎁", "钻石镐": "⛏️", "转转": "🎡", "转换": "♻️",
+  "苦肉计": "😖",
+  // 状态
+  "毒鸡汤": "🍲", "焚烧": "🔥", "末日": "☄️", "硫酸": "🧪",
+  // 控制
+  "断头台": "🪓", "黑洞": "🕳️", "弹簧": "🧷", "烟雾弹": "💨", "红绿灯": "🚦",
+  "土豆地雷": "🥔", "信": "✉️", "定时炸弹": "💣", "替罪羊": "🐐", "复制": "📋",
+  // 过牌 / 特殊
+  "无中生有": "🐇", "窥视": "👁️", "战利": "🏆", "抽奖": "🎰", "洗牌": "🔀",
+  "嗜血": "🧛", "蓄力": "💪", "兴奋剂": "⚗️", "反甲": "🦔", "幸运儿": "🍀",
+  "八音盒": "🎵", "末影龙": "🐉", "皮卡": "⚡",
+};
+const KIND_ICON = {
+  attack: "⚔️", block: "🛡️", heal: "💚", economy: "💰",
+  status: "🌀", control: "🎯", unit: "🐾", special: "⭐", draw: "🃏",
+};
+function cardIcon(name, kind) {
+  return CARD_ICON[name] || KIND_ICON[kind] || "🃏";
+}
+
+// 🎨 分层界面：更新顶栏"回合提示条"+ 主操作按钮
+function fxTurnBar() {
+  const bar = document.getElementById("turnbar");
+  const txt = document.getElementById("turnText");
+  const btnStart = document.getElementById("btnStart");
+  const btnEnd = document.getElementById("btnEndTurn");
+  if (!bar || !txt) return;
+
+  if (!S) {
+    bar.className = "turnbar";
+    txt.textContent = "未开始";
+    if (btnStart) btnStart.style.display = "";
+    if (btnEnd) btnEnd.style.display = "none";
+    return;
+  }
+  const spectating = !!S.spectator;
+  const dual = !spectating && (MY_PLAYER === null);
+  const iAm = spectating ? -1 : (dual ? S.you : MY_PLAYER);
+  const myTurn = !spectating && (S.current === iAm);
+
+  if (S.phase === "ended") {
+    bar.className = "turnbar";
+    txt.textContent = (S.winner === undefined || S.winner === null)
+      ? "对局结束" : ((S.winner === iAm) ? "🏆 你赢了！" : "💀 你输了");
+  } else if (spectating) {
+    bar.className = "turnbar";
+    txt.textContent = "👁 观战 · 现在是玩家" + (S.current + 1) + "的回合";
+  } else if (dual) {
+    bar.className = "turnbar mine";
+    txt.textContent = "🎮 双控 · 玩家" + (S.current + 1) + "的回合";
+  } else if (myTurn) {
+    bar.className = "turnbar mine";
+    txt.textContent = "✨ 轮到你了！";
+  } else {
+    bar.className = "turnbar theirs";
+    txt.textContent = "⏳ 等对方出牌…";
+  }
+
+  // 主操作：开局前显示"开始游戏"，开局后显示"结束回合"
+  if (btnStart) btnStart.style.display = (S.phase === "playing" && !spectating) ? "none" : "";
+  if (btnEnd) {
+    btnEnd.style.display = (S.phase === "playing" && !spectating) ? "" : "none";
+    btnEnd.disabled = !(myTurn || dual) || !!S.pending || !S.me.canPlay;
+  }
+}
+
 function render() {
   if (!S) return;
   const me = S.me, opp = S.opp;
 
-  $("meTitle").textContent = me.name + (S.current === S.you ? " ← 你的回合" : "");
-  $("oppTitle").textContent = opp.name + (S.current !== S.you ? " ← 他的回合" : "");
-  $("meTitle").className = S.current === S.you ? "cur" : "";
-  $("oppTitle").className = S.current !== S.you ? "cur" : "";
+  // 🎨 卡通版：把"轮到谁"做在面板和标题点上
+  const myTurnNow = (S.current === S.you);
+  $("meTitle").innerHTML = me.name + (myTurnNow ? " ← 你的回合" : "");
+  $("oppTitle").innerHTML = (S.ai && S.ai.on ? "🤖 " : "") + opp.name + (!myTurnNow ? " ← 他的回合" : "");
+  const mp = $("mePanel"), op = $("oppPanel");
+  if (mp) mp.classList.toggle("cur", myTurnNow);
+  if (op) op.classList.toggle("cur", !myTurnNow);
+  fxTurnBar();
 
-  $("meInfo").innerHTML = statLine(me, true) + "<br>" + statusTags(me.statuses);
-  $("oppInfo").innerHTML = statLine(opp, false) + "<br>" + statusTags(opp.statuses);
+  // 血量（新 UI：低了会变红闪）
+  fxHpTick("me", me.hp);
+  fxHpTick("opp", opp.hp);
+  $("meInfo").innerHTML = statLine(me, true) + (me.statuses && me.statuses.length ? "<br>" + statusTags(me.statuses) : "");
+  $("oppInfo").innerHTML = statLine(opp, false) + (opp.statuses && opp.statuses.length ? "<br>" + statusTags(opp.statuses) : "");
 
   // 单位
   if (me.units && me.units.length) $("meInfo").innerHTML += "<br>单位：" + me.units.map((u) => `${u.name}(${u.hp}血/${u.atk}伤)`).join("、");
@@ -402,16 +517,18 @@ function render() {
     for (const el of $("meHand").children) if (el.classList) el.classList.remove("dis");
   }
 
-  // 观战者隐藏所有操作按钮
-  for (const id of ["btnStart", "btnEndTurn", "btnReset", "btnAsP1", "btnAsP2", "btnAsDual"]) {
+  // 观战者：身份切换按钮和重置要藏起来
+  //   ⚠️ 不要碰 btnStart / btnEndTurn —— 它们的显示由 fxTurnBar() 管
+  for (const id of ["btnReset", "btnAsP1", "btnAsP2", "btnAsDual", "btnDummyMode", "btnCheatMode"]) {
     const el = $(id);
     if (el) el.style.display = spectating ? "none" : "";
   }
 
-  // 日志
+  // 日志（新 UI：战报在底部抽屉里）
   const logEl = $("log");
   logEl.innerHTML = (S.log || []).map((l) => `<div>${l}</div>`).join("");
   logEl.scrollTop = logEl.scrollHeight;
+  if (typeof window.__dockPing === "function") window.__dockPing();
 
   // 🎬 演出：按服务器的"演出事件"播动画
   //    （只有真打中才播，被格挡只播一个小提示）
@@ -425,6 +542,8 @@ function render() {
   });
   // 💣 定时炸弹徽章（常驻显示在"牌库顶有炸弹"那一方的面板上）
   fxSyncBomb(iAm);
+  // 🥔 土豆地雷徽章（常驻显示在"被埋雷"那一方的面板上）
+  fxSyncMine(iAm);
   // 😈 作弊开关状态同步
   if (typeof window.__cheatSync === "function" && S.cheat !== undefined) {
     window.__cheatSync(!!S.cheat);
@@ -883,12 +1002,14 @@ $("btnAgain").onclick = () => {
   send({ type: "start", player: MY_PLAYER !== null ? MY_PLAYER : 0 });
 };
 $("btnCloseResult").onclick = () => { $("overlay").classList.remove("show"); };
-$("btnEndTurn").onclick = () => send({ type: "endTurn" });
+$("btnEndTurn").onclick = () => { send({ type: "endTurn" }); };
 $("btnReset").onclick = async () => {
   try { await fetch("/reset"); } catch (e) { }
   S = null; bothHands = null;
   hideResult();
-  setPrompt('<h3>已重置 —— 点【开始新游戏】开一局</h3>');
+  setPrompt('<h3>已重置 —— 点【▶ 开始游戏】开一局</h3>');
+  if (typeof window.__closeDrawer === "function") window.__closeDrawer();
+  if (typeof fxTurnBar === "function") fxTurnBar();
   $("meInfo").innerHTML = ""; $("oppInfo").innerHTML = "";
   $("meHand").innerHTML = ""; $("oppHand").innerHTML = "";
   $("log").innerHTML = "";
@@ -932,6 +1053,44 @@ function fxApplyDummyVisibility() {
   if (q && q.style) q.style.display = fxCheatModeOn ? "inline" : "none";
 }
 
+// 🤖 AI 模式（设置抽屉里的按钮）
+let fxAiOn = false;
+let fxAiDiff = "normal";
+(function aiButtons() {
+  var b = document.getElementById("btnAiMode");
+  if (b) {
+    b.onclick = function () {
+      fxAiOn = !fxAiOn;
+      send({ type: "changeMode", mode: fxAiOn ? "ai" : "pvp", diff: fxAiDiff });
+      if (typeof window.__closeDrawer === "function") window.__closeDrawer();
+      setPrompt(fxAiOn
+        ? "<h3>🤖 和电脑打（难度：" + ({ easy: "简单", normal: "普通", hard: "困难" }[fxAiDiff] || fxAiDiff) + "）</h3>"
+        : "<h3>已切回真人对战 —— 点右上角【▶ 开始游戏】开一局</h3>");
+      refreshAiButtons();
+    };
+  }
+  function refreshAiButtons() {
+    var bi = document.getElementById("btnAiMode");
+    if (bi) bi.classList.toggle("on", fxAiOn);
+    document.querySelectorAll(".ai-diff").forEach(function (x) {
+      x.classList.toggle("on", x.dataset.d === fxAiDiff);
+      x.style.background = (x.dataset.d === fxAiDiff)
+        ? "linear-gradient(180deg,#8ce8dd,#3fcabb)" : "";
+      x.style.color = (x.dataset.d === fxAiDiff) ? "#0a4a44" : "";
+    });
+  }
+  document.querySelectorAll(".ai-diff").forEach(function (x) {
+    x.onclick = function () {
+      fxAiDiff = x.dataset.d || "normal";
+      if (fxAiOn) send({ type: "changeMode", ai: true, diff: fxAiDiff, mode: "ai" });
+      else send({ type: "changeMode", diff: fxAiDiff });
+      refreshAiButtons();
+    };
+  });
+  window.__aiRefresh = refreshAiButtons;
+  refreshAiButtons();
+})();
+
 (function modeButtons() {
   // ⚠️ 状态只有一份：全局的 fxDummyModeOn / fxCheatModeOn
   //    （之前这里还有一份 dummyOn，两边各管各的显示 → 互相打架，按钮出不来）
@@ -946,13 +1105,15 @@ function fxApplyDummyVisibility() {
   if (d) {
     d.onclick = function () {
       fxDummyModeOn = !fxDummyModeOn;
+      // 分层界面：切换后把设置抽屉收起来，回到游戏
+      if (typeof window.__closeDrawer === "function") window.__closeDrawer();
       if (fxDummyModeOn) {
         // 切到木桩：直接让服务器开一局木桩
         send({ type: "changeMode", mode: "dummy" });
         setPrompt("<h3>🎯 木桩模式已开 —— 对面是不会还手的 100 血木桩</h3>");
       } else {
         send({ type: "changeMode", mode: "pvp" });
-        setPrompt("<h3>已切回正常对战 —— 点【开始新游戏】开一局</h3>");
+        setPrompt("<h3>已切回正常对战 —— 点右上角【▶ 开始游戏】开一局</h3>");
       }
       fxApplyDummyVisibility();             // 立刻生效
     };
@@ -967,6 +1128,7 @@ function fxApplyDummyVisibility() {
       // 通知作弊面板显示/隐藏
       if (typeof window.__cheatShow === "function") window.__cheatShow(fxCheatModeOn);
       refresh();
+      if (typeof window.__closeDrawer === "function") window.__closeDrawer();
     };
   }
 

@@ -532,7 +532,20 @@ function playCard(g, playerIdx, cardName, opts = {}) {
   const mine = getStatus(p, "土豆地雷");
   if (mine.length > 0 && !p.mineTriggeredThisTurn) {
     p.mineTriggeredThisTurn = true;
+    const hpBeforeMine = p.hp;
     loseHp(g, p, 3, "土豆地雷");
+    // 🥔 演出：踩爆了！（客户端据此播"地雷爆炸"+ 移除徽章）
+    fxPush(g, {
+      kind: "damage",
+      seq: g.lastPlay ? g.lastPlay.seq : 0,
+      card: "土豆地雷",
+      attacker: 1 - g.players.indexOf(p),
+      defender: g.players.indexOf(p),
+      amount: hpBeforeMine - p.hp || 3,
+      reason: "土豆地雷",
+      hpAfter: p.hp, hpBefore: hpBeforeMine,
+      mineBoom: true,
+    });
     if (g.phase === "ended") return { ok: true };
   }
 
@@ -861,9 +874,15 @@ function execEffect(g, idx, card, opts) {
       return;
     }
     case "landmine": {
+      // 🥔 埋雷
+      //    ⚠️ 木桩不会自己出牌，所以它的"踩雷"由服务器在它回合开始时模拟
+      //       （见 server.js 的 skipDummyTurn → "木桩踩到土豆地雷了"）
+      //       这里照常给它挂状态，别跳过
       addStatus(g, opp, "土豆地雷", { turns: 1 });
       opp.mineTriggeredThisTurn = false;
       log(g, `${opp.name} 下回合出牌将扣 3 血`);
+      // 🥔 演出：地雷埋到对方身上（客户端会显示一个"埋着的雷"徽章）
+      fxStatus(g, 1 - idx, "土豆地雷", "土豆地雷");
       return;
     }
     case "timebomb": {

@@ -10,6 +10,7 @@ const path = require("path");
 const { upgradeSocket } = require("./ws.js");
 const E = require("./engine.js");
 const { CARDS, CARD_BY_NAME } = require("./cards.js");
+const AI = require("./ai.js");
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const ROOT = __dirname;
@@ -20,6 +21,119 @@ const clients = []; // { conn, player: 0|1|null }
 // 😈 作弊模式开关（默认关闭）
 //   开启方式：① 网址加 ?cheat=1  ② 客户端发 cheat 消息  ③ 启动时加 --cheat
 let cheatOn = process.argv.indexOf("--cheat") >= 0;
+
+// ============================================================
+//  🤖 AI 模式
+//    开启后，玩家2 变成电脑。
+//    AI 的决策走 **和真人完全一样的出口**（E.playCard / resolvePending），
+//    所以它不能做人类做不到的事。
+//    ⚠️ AI 只看公开信息（血量/能量/手牌数/单位/状态/战报），
+//       绝不读对方手牌内容 —— 见 ai.js 的 boardInfo
+// ============================================================
+let aiOn = false;
+let aiDiff = "normal";        // easy | normal | hard
+let aiTimer = null;           // 思考延迟用的定时器
+let aiBusy = false;           // 防止重入
+let aiFailCount = 0;          // 连续失败次数（防止死循环）
+let aiTurnActions = 0;        // 这一回合 AI 已经行动了几次（保险丝）
+let aiLastTurn = -1;          // 上一次广播时的回合数（换手就重置计数器）
+
+function aiSeat() { return 1; }                 // AI 坐玩家2
+function aiPlayer() { return game ? game.players[aiSeat()] : null; }
+function isAiSeat(i) { return aiOn && i === aiSeat(); }
+
+// 安排一次 AI 行动（延迟一点，让人看清它在干什么）
+function scheduleAi(step) {
+  if (!aiOn || !game || game.phase !== "playing") return;
+  if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
+  const delay = AI.aiDelay(aiDiff, step === "endturn" ? 300 : 0);
+  aiTimer = setTimeout(() => {
+    aiTimer = null;
+    try { runAiOnce(); } catch (e) { console.log("[AI] 出错: " + e.message); }
+  }, delay);
+}
+
+// AI 走一步（要么出一张牌，要么处理一个待决策，要么结束回合）
+function runAiOnce() {
+  if (!aiOn || !game || game.phase !== "playing") return;
+  const my = aiPlayer();
+  if (!my || my.hp <= 0) return;
+
+  // ① 有待决策，而且是该 AI 决定的 → 先处理
+  if (game.pending) {
+    const owner = pendingOwner(game.pending);
+    if (!isAiSeat(owner)) return;                 // 不是 AI 的事，等真人
+    if (aiBusy) return;
+    aiBusy = true;
+    const msg = AI.aiResolve(game, game.pending, aiDiff);
+    console.log("[AI] 处理待决策 " + game.pending.kind + " → " + JSON.stringify(msg));
+    let ok = false;
+    try { ok = resolvePending(msg, game.pending); }
+    catch (e) { console.log("[AI] 决策出错: " + e.message); }
+    if (!ok) {
+      console.log("[AI] 决策被拒绝 → 走兜底");
+      try {
+        if (game.pending && game.pending.kind === "block") {
+          E.applyDamage(game, game.players[game.pending.attacker],
+            game.players[game.pending.defender], game.pending.amount, game.pending.reason);
+          if (game.pending.statusAfter) for (const ev of game.pending.statusAfter) E.fxPush(game, ev);
+        }
+      } catch (e) { }
+      game.pending = null;
+    }
+    aiBusy = false;
+    broadcast();
+    if (game.phase === "playing") scheduleAi("after");
+    return;
+  }
+
+  // ② 不是 AI 的回合 → 什么都不做
+  if (game.current !== aiSeat()) return;
+
+  // ③ AI 的回合：挑一张牌出
+  const card = AI.aiChooseCard(game, aiSeat(), aiDiff);
+  if (card) {
+    if (aiBusy) return;
+    // 🔒 保险丝：一回合最多行动 12 次，连续失败 3 次就强制结束回合
+    if (aiTurnActions++ > 12 || aiFailCount >= 3) {
+      console.log("[AI] 保险丝触发（行动 " + aiTurnActions + " 次 / 失败 " + aiFailCount + " 次）→ 强制结束回合");
+      aiTurnActions = 0; aiFailCount = 0;
+      if (aiBusy) return;
+      aiBusy = true;
+      try { E.endTurn(game); } catch (e) { }
+      aiBusy = false;
+      broadcast();
+      return;
+    }
+    aiBusy = true;
+    console.log("[AI] 出牌：" + card);
+    const r = E.playCard(game, aiSeat(), card, {});
+    if (!r.ok) {
+      aiFailCount++;
+      console.log("[AI] 出牌失败（" + aiFailCount + "）：" + r.error);
+    } else {
+      aiFailCount = 0;
+    }
+    aiBusy = false;
+    broadcast();
+    if (game.phase === "playing") scheduleAi("after");
+    return;
+  }
+
+  // ④ 没牌可出（或都不值得出）→ 结束回合
+  console.log("[AI] 结束回合" + (aiFailCount ? "（之前失败 " + aiFailCount + " 次）" : ""));
+  aiTurnActions = 0;
+  aiFailCount = 0;
+  if (aiBusy) return;
+  aiBusy = true;
+  try { E.endTurn(game); } catch (e) { console.log("[AI] 结束回合出错: " + e.message); }
+  aiBusy = false;
+  broadcast();
+  if (game.phase === "playing" && game.pending) {
+    // 结束回合可能产生"弃牌到上限" —— 交给下一轮的待决策逻辑
+    scheduleAi("after");
+  }
+}
 
 // ---------- 静态文件 ----------
 const MIME = {
@@ -109,6 +223,22 @@ function skipDummyTurn() {
     game.pending = null;
     const dummyP = game.players[game.current];
     E.startTurn(game);
+    // 🥔 木桩不会自己出牌 → 但埋在它身上的地雷得有个结果。
+    //    这里让它"自动踩一下"（这样你能看到地雷爆炸的演出）
+    if (dummyP.statuses.some((s) => s.type === "土豆地雷")) {
+      const hpB = dummyP.hp;
+      console.log("[木桩] 木桩踩到土豆地雷了！");
+      E.loseHp(game, dummyP, 3, "土豆地雷");
+      E.fxPush(game, {
+        kind: "damage", seq: game.lastPlay ? game.lastPlay.seq : 0,
+        card: "土豆地雷",
+        attacker: 1 - game.current, defender: game.current,
+        amount: hpB - dummyP.hp || 3, reason: "土豆地雷",
+        hpAfter: dummyP.hp, hpBefore: hpB, mineBoom: true,
+      });
+      dummyP.statuses = dummyP.statuses.filter((s) => s.type !== "土豆地雷");
+      dummyP.mineTriggeredThisTurn = true;
+    }
     // ⚠️ 关键：pending 只在"抽到炸弹的那一刻"才会被设置。
     //    但木桩的回合被跳过时，那个 pending 可能已经被清掉了，
     //    结果炸弹就烂在木桩手上永远不会被处理。
@@ -290,6 +420,13 @@ function viewFor(playerIdx) {
       game.players[0].hand.indexOf("定时炸弹") >= 0,
       game.players[1].hand.indexOf("定时炸弹") >= 0,
     ],
+    // 🥔 谁身上埋着土豆地雷（客户端据此在被埋那一方面板上显示地雷徽章）
+    mineOn: [
+      game.players[0].statuses.some((s) => s.type === "土豆地雷"),
+      game.players[1].statuses.some((s) => s.type === "土豆地雷"),
+    ],
+    // 🤖 AI 模式（客户端用来显示"对面是电脑"）
+    ai: aiOn ? { on: true, diff: aiDiff, seat: aiSeat() } : { on: false },
     pending: game.pending,
     log: game.log.slice(-40),
   };
@@ -306,8 +443,7 @@ function broadcast() {
   try { ensurePlayerTurn(); } catch (e) { console.log("[木桩] 跳过回合出错: " + e.message); }
   // 🎯 木桩模式：所有"该木桩决策"的窗口自动选"不用"（否则会卡住不动）
   try { autoResolveDummyPending(); } catch (e) { console.log("[木桩] 自动决策出错: " + e.message); }
-  try { ensurePlayerTurn(); } catch (e) { }
-  for (const c of clients) {
+  try { ensurePlayerTurn(); } catch (e) { }  for (const c of clients) {
     if (!c.online || !c.conn.alive) continue;   // 断线的（宽限期内）不发
     if (c.player === "spectator") {
       // 观战者：给他玩家1的视角 + 双方手牌 + 标记
@@ -324,6 +460,15 @@ function broadcast() {
       // 固定身份：发"自己的视角"（me 就是自己，you 就是自己）
       c.conn.send({ type: "state", view: viewFor(c.player) });
     }
+  }
+
+  // 🤖 AI 模式：如果轮到 AI（或该 AI 做决策），安排它行动
+  //    ⚠️ 放在最后：先把最新状态发出去，玩家能看到"轮到电脑了"
+  if (aiOn && game.phase === "playing") {
+    // 换手了就重置计数器
+    if (aiLastTurn !== game.turn) { aiLastTurn = game.turn; aiTurnActions = 0; aiFailCount = 0; }
+    if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
+    scheduleAi("broadcast");
   }
 }
 
@@ -346,9 +491,10 @@ function handleMessage(c, raw) {
   }
 
   // ============================================================
-  // 🔄 切换模式（上面那排按钮用）—— 放在 game 检查之前，这样无局也能切
-  //   mode: "pvp" | "dummy"     dummy=木桩模式
-  //   cheat: true/false         作弊开关
+  // 🔄 切换模式（设置抽屉里的按钮用）—— 放在 game 检查之前，无局也能切
+  //   mode:  "pvp" | "dummy" | "ai"   木桩 / 电脑对手
+  //   cheat: true/false                作弊开关
+  //   diff:  "easy"|"normal"|"hard"    AI 难度
   // ============================================================
   if (msg.type === "changeMode") {
     if (c.player === "spectator") { c.conn.send({ type: "error", message: "观战者不能切换模式" }); return; }
@@ -357,12 +503,34 @@ function handleMessage(c, raw) {
       if (msg.cheat) cheatOn = true;
       console.log(`[模式] 玩家${(c.player === null ? 0 : c.player) + 1} 作弊 = ${c.cheat}`);
     }
+    if (msg.diff && ["easy", "normal", "hard"].indexOf(msg.diff) >= 0) {
+      aiDiff = msg.diff;
+      console.log("[模式] AI 难度 → " + aiDiff);
+    }
+    // 🤖 只开/关 AI，不动当前对局
+    if (msg.ai !== undefined) {
+      aiOn = !!msg.ai;
+      if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
+      console.log("[模式] AI 对手 = " + aiOn + "（难度 " + aiDiff + "）");
+    }
     if (msg.mode === "dummy") {
       console.log("[模式] 切换到木桩模式（自动开局）");
+      aiOn = false;
       game = startDummyGame();
       c.dummyMode = true;
+    } else if (msg.mode === "ai") {
+      console.log("[模式] 切换到 AI 对战（自动开局）");
+      aiOn = true;
+      c.dummyMode = false;
+      game = E.newGame();
+      game.players[0].name = "你";
+      game.players[1].name = "电脑（" + ({ easy: "简单", normal: "普通", hard: "困难" }[aiDiff] || aiDiff) + "）";
+      game.log = ["🤖 AI 对战：电脑坐玩家2（难度：" + aiDiff + "）", "开局：先后手 8 能量 5 张 / 5 能量 3 张"];
+      broadcast();
+      return;
     } else if (msg.mode === "pvp") {
-      console.log("[模式] 切换回正常对战");
+      console.log("[模式] 切换回真人对战");
+      aiOn = false;
       c.dummyMode = false;
       game = null;
     }
@@ -484,7 +652,7 @@ function handleMessage(c, raw) {
       const me2 = game.players[idx];
       const fxCards = ["一拳", "闪电", "核弹", "末日", "黑洞", "天崩地裂", "毒鸡汤",
         "八音盒", "末影龙", "皮卡", "斩杀", "狙击枪", "雪球", "血刃", "硫酸",
-        "苦肉计", "幸运儿", "医疗包", "水晶盾", "盾反", "定时炸弹", "断头台", "转转"];
+        "苦肉计", "幸运儿", "医疗包", "水晶盾", "盾反", "定时炸弹", "断头台", "转转", "土豆地雷"];
       me2.maxEnergy = 99;
       me2.energy = 99;
       me2.maxHand = 40;                 // 放开手牌上限

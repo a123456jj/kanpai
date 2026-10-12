@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>📖 卡牌图鉴 · 卡牌对决</title>
+<link rel="stylesheet" href="fx-panel.css">
+<style>
+:root{
+  --cream:#fff8ec; --cream2:#ffefd6; --ink:#4a3520; --ink2:#7a6040; --paper:#fffdf8;
+  --attack1:#ffd0d5; --attack2:#ff9aa2; --attack3:#e8455c;
+  --block1:#d0e9ff;  --block2:#9ad4ff;  --block3:#2b86e0;
+  --heal1:#d6f5cf;   --heal2:#a8e6a3;   --heal3:#3aa83a;
+  --eco1:#fff3c0;    --eco2:#ffe38a;    --eco3:#e0a000;
+  --status1:#ecd8ff; --status2:#d4a8ff; --status3:#8a3ce0;
+  --ctrl1:#d0f5f0;   --ctrl2:#8ce8dd;   --ctrl3:#1a9a8c;
+  --unit1:#ffe0c0;   --unit2:#ffc48a;   --unit3:#e06a00;
+  --spec1:#e8e8f4;   --spec2:#c8c8dc;   --spec3:#6a6a8a;
+  --draw1:#ffd9ec;   --draw2:#ffc4e0;   --draw3:#e04a94;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;min-height:100%}
+body{
+  color:var(--ink); font-weight:bold;
+  font-family:"Comic Sans MS","Yuanti SC","YouYuan","Microsoft YaHei",system-ui,sans-serif;
+  font-size:15px;
+  background:var(--cream);
+  background-image:
+    radial-gradient(circle at 10% 10%, rgba(255,154,162,.30) 0 44px, transparent 45px),
+    radial-gradient(circle at 26% 74%, rgba(154,212,255,.28) 0 58px, transparent 59px),
+    radial-gradient(circle at 74% 18%, rgba(255,227,138,.32) 0 50px, transparent 51px),
+    radial-gradient(circle at 90% 66%, rgba(168,230,163,.28) 0 64px, transparent 65px),
+    radial-gradient(circle at 48% 42%, rgba(212,168,255,.18) 0 72px, transparent 73px),
+    linear-gradient(180deg, var(--cream) 0%, var(--cream2) 100%);
+  background-attachment:fixed;
+}
+#fx{position:fixed;inset:0;pointer-events:none;z-index:9995}
+#fx-flash{position:fixed;inset:0;pointer-events:none;z-index:9990;opacity:0}
+#fx *,#fx-flash *{pointer-events:none !important}
+
+/* ── 顶栏 ── */
+.topbar{
+  position:sticky;top:0;z-index:60;
+  display:flex;align-items:center;gap:11px;flex-wrap:wrap;
+  padding:12px 20px;
+  background:linear-gradient(180deg,#fffdf6,#ffeacb);
+  border-bottom:4px solid var(--ink);
+  box-shadow:0 6px 0 rgba(74,53,32,.16);
+}
+.logo{
+  font-size:22px;font-weight:900;letter-spacing:2px;color:#fff;
+  padding:4px 16px 6px;border-radius:16px;
+  background:linear-gradient(180deg,#ffc4e0,#e04a94);
+  border:3px solid var(--ink);
+  box-shadow:0 4px 0 var(--ink), inset 0 2px 0 rgba(255,255,255,.5);
+  text-shadow:0 2px 0 rgba(0,0,0,.22);
+  animation:logoBob 3s ease-in-out infinite;
+}
+@keyframes logoBob{0%,100%{transform:rotate(-2deg)}50%{transform:rotate(2deg) scale(1.04)}}
+.sub{font-size:13px;color:var(--ink2)}
+
+/* ── 控件 ── */
+.controls{
+  position:sticky;top:74px;z-index:55;
+  padding:12px 20px;display:flex;gap:9px;flex-wrap:wrap;align-items:center;
+  background:rgba(255,248,236,.94);border-bottom:3px solid var(--ink);
+  backdrop-filter:blur(6px);
+}
+.controls input[type=search]{
+  background:#fff;border:3px solid var(--ink);color:var(--ink);
+  padding:8px 14px;border-radius:14px;font-family:inherit;font-weight:bold;font-size:14px;width:190px;
+  box-shadow:0 3px 0 rgba(74,53,32,.2);
+}
+.controls input[type=search]:focus{outline:none;box-shadow:0 3px 0 rgba(74,53,32,.2),0 0 0 4px rgba(255,201,60,.5)}
+.chip{
+  padding:7px 15px 8px;border-radius:16px;cursor:pointer;font-size:13px;
+  background:linear-gradient(180deg,#fffdf6,#ffe6c4);
+  border:3px solid var(--ink);color:var(--ink);
+  box-shadow:0 3px 0 var(--ink);transition:transform .08s, box-shadow .08s;
+}
+.chip:hover{transform:translateY(-2px);box-shadow:0 5px 0 var(--ink)}
+.chip:active{transform:translateY(2px);box-shadow:0 1px 0 var(--ink)}
+.chip.on{background:linear-gradient(180deg,#ffe58a,#ffc93c);color:#5a3c00;box-shadow:0 3px 0 #b07a00}
+.count{font-size:13px;color:var(--ink2);margin-left:auto}
+
+/* ── 卡片网格 ── */
+.group{margin:20px auto 6px;max-width:1520px;padding:0 22px;display:flex;align-items:center;gap:11px}
+.group h2{margin:0;font-size:19px;font-weight:900;letter-spacing:1px}
+.group .n{font-size:13px;color:var(--ink2)}
+.grid{
+  padding:0 22px 20px;display:grid;gap:16px;
+  grid-template-columns:repeat(auto-fill,minmax(196px,1fr));
+  max-width:1520px;margin:0 auto;
+}
+
+/* ── 单张卡（跟游戏里同一套配色）── */
+.k{
+  position:relative;padding:14px 15px 15px;border-radius:20px;overflow:hidden;
+  background:linear-gradient(165deg,#fff 0%, var(--c1,#eee) 42%, var(--c2,#ddd) 100%);
+  border:3.5px solid var(--ink);
+  box-shadow:0 6px 0 var(--c3,#888), 0 9px 16px rgba(74,53,32,.24), inset 0 3px 0 rgba(255,255,255,.6);
+  transition:transform .14s cubic-bezier(.2,1.5,.4,1), box-shadow .14s, filter .14s;
+  cursor:pointer;
+}
+.k::before{
+  content:"";position:absolute;left:-10%;right:-10%;top:-8px;height:46px;
+  background:linear-gradient(180deg, rgba(255,255,255,.8), rgba(255,255,255,0));
+  border-radius:50%;pointer-events:none;
+}
+.k:hover{
+  transform:translateY(-9px) scale(1.035);
+  box-shadow:0 14px 0 var(--c3,#888), 0 18px 24px rgba(74,53,32,.3), inset 0 3px 0 rgba(255,255,255,.7);
+  z-index:5;filter:brightness(1.05);
+}
+.k .row1{display:flex;align-items:flex-start;gap:9px}
+.k .ico{font-size:30px;line-height:1;filter:drop-shadow(0 2px 0 rgba(74,53,32,.3))}
+.k .nm{font-size:17px;font-weight:900;flex:1;line-height:1.28;text-shadow:0 1px 0 rgba(255,255,255,.85)}
+.k .cost{
+  min-width:32px;height:32px;padding:0 8px;display:flex;align-items:center;justify-content:center;
+  border-radius:50%;font-size:16px;font-weight:900;color:#5a3c00;
+  background:radial-gradient(circle at 35% 30%, #fff6c4, #ffc93c 60%, #e0a000);
+  border:3px solid var(--ink);
+  box-shadow:0 3px 0 rgba(74,53,32,.35), inset 0 2px 0 rgba(255,255,255,.8);
+}
+.k .kindline{display:flex;align-items:center;gap:7px;margin-top:9px;flex-wrap:wrap}
+.k .kindtag{
+  font-size:11.5px;padding:3px 10px 4px;border-radius:14px;
+  background:rgba(255,255,255,.72);border:2.5px solid var(--ink);color:var(--ink);
+  box-shadow:0 2px 0 rgba(74,53,32,.2);
+}
+.k .fxname{font-size:11px;color:var(--ink2)}
+.k .txt{margin-top:10px;font-size:12.5px;line-height:1.6;color:#6a5238;text-shadow:0 1px 0 rgba(255,255,255,.7)}
+.k .demo{
+  margin-top:11px;width:100%;
+  background:linear-gradient(180deg,#fffdf6,#ffe6c4);
+  border:3px solid var(--ink);color:var(--ink);
+  padding:7px;border-radius:13px;cursor:pointer;font-size:12.5px;font-family:inherit;font-weight:bold;
+  box-shadow:0 3px 0 var(--ink);transition:transform .08s, box-shadow .08s;
+}
+.k .demo:hover{transform:translateY(-2px);box-shadow:0 5px 0 var(--ink)}
+.k .demo:active{transform:translateY(2px);box-shadow:0 1px 0 var(--ink)}
+/* 类别配色 */
+.k.k-attack {--c1:var(--attack1);--c2:var(--attack2);--c3:var(--attack3)}
+.k.k-block  {--c1:var(--block1); --c2:var(--block2); --c3:var(--block3)}
+.k.k-heal   {--c1:var(--heal1);  --c2:var(--heal2);  --c3:var(--heal3)}
+.k.k-economy{--c1:var(--eco1);   --c2:var(--eco2);   --c3:var(--eco3)}
+.k.k-status {--c1:var(--status1);--c2:var(--status2);--c3:var(--status3)}
+.k.k-control{--c1:var(--ctrl1);  --c2:var(--ctrl2);  --c3:var(--ctrl3)}
+.k.k-unit   {--c1:var(--unit1);  --c2:var(--unit2);  --c3:var(--unit3)}
+.k.k-special{--c1:var(--spec1);  --c2:var(--spec2);  --c3:var(--spec3)}
+.k.k-draw   {--c1:var(--draw1);  --c2:var(--draw2);  --c3:var(--draw3)}
+
+.back{
+  margin-left:auto;text-decoration:none;
+  background:linear-gradient(180deg,#d6ecff,#9ad4ff);color:#1a4a7a;
+  border:3px solid var(--ink);padding:8px 16px 9px;border-radius:14px;font-weight:bold;
+  box-shadow:0 4px 0 #2b6aa0;
+}
+.back:active{transform:translateY(3px);box-shadow:0 1px 0 #2b6aa0}
+.empty{padding:70px 22px;text-align:center;color:var(--ink2);font-size:16px}
+
+@media (max-width:780px){
+  .topbar{padding:10px 12px;gap:8px}
+  .logo{font-size:17px;padding:3px 12px 5px;border-radius:13px}
+  .controls{top:64px;padding:10px 12px}
+  .controls input[type=search]{width:126px;padding:7px 11px;font-size:13px}
+  .chip{padding:6px 11px 7px;font-size:12px;border-radius:13px}
+  .group{padding:0 12px;margin-top:14px}
+  .group h2{font-size:16px}
+  .grid{padding:0 12px 16px;gap:11px;grid-template-columns:repeat(auto-fill,minmax(158px,1fr))}
+  .k{padding:11px 12px 12px;border-radius:16px}
+  .k .ico{font-size:24px}
+  .k .nm{font-size:14.5px}
+  .k .cost{min-width:27px;height:27px;font-size:14px}
+  .k .txt{font-size:11.5px}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="logo">📖 卡牌图鉴</span>
+  <span class="sub" id="sub">加载中…</span>
+  <a class="back" href="index.html">← 回到游戏</a>
+</div>
+
+<div class="controls">
+  <input type="search" id="q" placeholder="🔍 搜索卡名…">
+  <span class="chip on" data-k="all">全部</span>
+  <span class="chip" data-k="attack">⚔️ 攻击</span>
+  <span class="chip" data-k="block">🛡️ 防御</span>
+  <span class="chip" data-k="heal">💚 治疗</span>
+  <span class="chip" data-k="economy">💰 经济</span>
+  <span class="chip" data-k="status">🌀 状态</span>
+  <span class="chip" data-k="control">🎯 控制</span>
+  <span class="chip" data-k="draw">🃏 过牌</span>
+  <span class="chip" data-k="unit">🐾 单位</span>
+  <span class="chip" data-k="special">⭐ 特殊</span>
+  <span class="count" id="cnt"></span>
+</div>
+
+<div id="wrap"></div>
+
+<div id="fx-flash"></div>
+<div id="fx"></div>
+
+<script src="fx.js?v=24"></script>
+<script>
+// ============================================================
+//  卡牌图鉴（卡通版）
+//    数据来源：/cards   点任意一张卡就能看它的动画
+// ============================================================
+const KIND_NAME = {
+  attack: "⚔️ 攻击", block: "🛡️ 防御", heal: "💚 治疗", economy: "💰 经济",
+  status: "🌀 状态", control: "🎯 控制", unit: "🐾 单位",
+  special: "⭐ 特殊", draw: "🃏 过牌",
+};
+const KIND_ORDER = ["attack", "block", "heal", "economy", "status", "control", "draw", "unit", "special"];
+const FX_LABEL = {
+  punch: "拳击", lightning: "雷击", quake: "地裂", doom: "天罚", nuke: "核弹",
+  execute: "斩", snowball: "雪球", multi: "连击", blood: "血刃", slash: "刀光",
+  snipe: "狙击", "hit-light": "轻击", poison: "毒", burning: "焚烧",
+  blackhole: "黑洞", acid: "酸液", guillotine: "断头台", selfharm: "自伤",
+  convert: "转换", lucky: "幸运", charge: "蓄力", thorns: "反甲",
+  shield: "护盾", block: "格挡", heal: "治疗", musicbox: "八音盒",
+  summon: "召唤", draw: "抽牌", peek: "窥视", timebomb: "定时炸弹", mine: "地雷",
+};
+const CARD_ICON = {
+  "一拳":"👊","木棍":"🪵","石头":"🪨","手术刀":"🔪","刀":"🗡️","血刃":"🩸",
+  "雪球":"❄️","闪电":"⚡","狙击枪":"🎯","苦无":"✴️","核弹":"☢️","天崩地裂":"🌋",
+  "斩杀":"💀","西瓜":"🍉","转头":"🔄","溜溜球":"🪀",
+  "飞轮":"🌀","名刀":"⚔️","圣诞树":"🎄","盾反":"🛡️","水晶盾":"💎","镇定剂":"💉",
+  "牛奶":"🥛","医疗包":"🩹","回光返照":"✨","腐肉":"🍖",
+  "胡萝卜":"🥕","欠钱":"💸","奖励箱":"🎁","钻石镐":"⛏️","转转":"🎡","转换":"♻️","苦肉计":"😖",
+  "毒鸡汤":"🍲","焚烧":"🔥","末日":"☄️","硫酸":"🧪",
+  "断头台":"🪓","黑洞":"🕳️","弹簧":"🧷","烟雾弹":"💨","红绿灯":"🚦",
+  "土豆地雷":"🥔","信":"✉️","定时炸弹":"💣","替罪羊":"🐐","复制":"📋",
+  "无中生有":"🐇","窥视":"👁️","战利":"🏆","抽奖":"🎰","洗牌":"🔀",
+  "嗜血":"🧛","蓄力":"💪","兴奋剂":"⚗️","反甲":"🦔","幸运儿":"🍀",
+  "八音盒":"🎵","末影龙":"🐉","皮卡":"⚡",
+};
+const KIND_ICON = { attack:"⚔️", block:"🛡️", heal:"💚", economy:"💰",
+  status:"🌀", control:"🎯", unit:"🐾", special:"⭐", draw:"🃏" };
+const icon = (n, k) => CARD_ICON[n] || KIND_ICON[k] || "🃏";
+
+let ALL = [], cur = "all", q = "";
+
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+function demoFx(card) {
+  const x = window.innerWidth / 2;
+  const y = Math.max(170, window.innerHeight * 0.32);
+  try {
+    if (window.FX && FX.unlockAudio) FX.unlockAudio();
+    const fxName = (window.FX && FX.CARD_FX && FX.CARD_FX[card.name]) || null;
+    if (fxName && FX.castFx) {
+      FX.castFx(card.name, { card: card, pos: { x: x, y: y }, speed: 1 });
+      return fxName;
+    }
+    if (FX.simpleFx) {
+      const byKind = { attack:"hit-mid", block:"shield", heal:"heal", economy:"buff",
+                       status:"debuff", control:"debuff", unit:"summon", draw:"draw", special:"buff" };
+      const k = byKind[card.kind] || "hit-mid";
+      FX.simpleFx(k, { x: x, y: y });
+      return k;
+    }
+  } catch (e) { console.warn(e); }
+  return null;
+}
+
+function buildCard(card) {
+  const k = el("div", "k k-" + (card.kind || "special"));
+  const cost = card.cost === "X" ? "X" : (card.cost === "X+1" ? "X+1" : card.cost);
+  const fxName = (window.FX && FX.CARD_FX && FX.CARD_FX[card.name]) || null;
+  k.innerHTML =
+    '<div class="row1">' +
+      '<span class="ico">' + icon(card.name, card.kind) + "</span>" +
+      '<div class="nm">' + card.name + "</div>" +
+      '<div class="cost">' + cost + "</div>" +
+    "</div>" +
+    '<div class="kindline">' +
+      '<span class="kindtag">' + (KIND_NAME[card.kind] || card.kind) + "</span>" +
+      '<span class="fxname">' + (fxName ? "演出：" + (FX_LABEL[fxName] || fxName) : "通用演出") + "</span>" +
+    "</div>" +
+    '<div class="txt">' + (card.text || "") + "</div>" +
+    '<button class="demo">▶ 看演出</button>';
+
+  k.querySelector(".demo").onclick = function (ev) {
+    ev.stopPropagation();
+    const n = demoFx(card);
+    const b = ev.target;
+    if (n) {
+      const old = b.textContent;
+      b.textContent = "🎬 " + (FX_LABEL[n] || n);
+      setTimeout(function () { b.textContent = old; }, 1400);
+    }
+  };
+  k.onclick = function () { demoFx(card); };
+  return k;
+}
+
+function render() {
+  const wrap = document.getElementById("wrap");
+  wrap.innerHTML = "";
+  const list = ALL.filter(function (c) {
+    if (cur !== "all" && c.kind !== cur) return false;
+    if (q && c.name.indexOf(q) < 0 && (c.text || "").indexOf(q) < 0) return false;
+    return true;
+  });
+  document.getElementById("cnt").textContent = "显示 " + list.length + " / " + ALL.length + " 张";
+  document.getElementById("sub").textContent = "共 " + ALL.length + " 张 · 点任意一张就能看动画 ✨";
+
+  if (!list.length) {
+    wrap.appendChild(el("div", "empty", "😢 没有匹配的卡牌"));
+    return;
+  }
+  const groups = {};
+  list.forEach(function (c) { (groups[c.kind] = groups[c.kind] || []).push(c); });
+  KIND_ORDER.forEach(function (kind) {
+    const arr = groups[kind];
+    if (!arr || !arr.length) return;
+    wrap.appendChild(el("div", "group",
+      "<h2>" + (KIND_NAME[kind] || kind) + '</h2><span class="n">' + arr.length + " 张</span>"));
+    const grid = el("div", "grid");
+    arr.forEach(function (c) { grid.appendChild(buildCard(c)); });
+    wrap.appendChild(grid);
+  });
+}
+
+fetch("/cards").then(function (r) { return r.json(); }).then(function (arr) {
+  ALL = Array.isArray(arr) ? arr : (arr.cards || []);
+  ALL.sort(function (a, b) {
+    const ca = a.cost === "X" ? 99 : (a.cost === "X+1" ? 98 : Number(a.cost) || 0);
+    const cb = b.cost === "X" ? 99 : (b.cost === "X+1" ? 98 : Number(b.cost) || 0);
+    if (ca !== cb) return ca - cb;
+    return a.name.localeCompare(b.name, "zh");
+  });
+  render();
+}).catch(function (e) {
+  document.getElementById("wrap").innerHTML =
+    '<div class="empty">😵 拉不到卡牌数据：' + e.message + "<br>（要连上服务器才能看图鉴）</div>";
+});
+
+document.getElementById("q").oninput = function (e) { q = e.target.value.trim(); render(); };
+document.querySelectorAll(".chip").forEach(function (c) {
+  c.onclick = function () {
+    document.querySelectorAll(".chip").forEach(function (x) { x.classList.remove("on"); });
+    c.classList.add("on");
+    cur = c.dataset.k;
+    render();
+  };
+});
+</script>
+</body>
+</html>
