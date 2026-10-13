@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>🕹 像素画生成器</title>
+<style>
+:root{ --ink:#241a2c; --line:#e2dced; --bg:#f7f5fb; }
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{
+  background:var(--bg); color:var(--ink); padding:22px 18px 70px;
+  font-family:-apple-system,"Segoe UI Variable","Microsoft YaHei",system-ui,sans-serif;
+}
+h1{font-size:23px;margin:0 0 8px;letter-spacing:-.3px}
+.sub{color:#6b6478;font-size:13.5px;line-height:1.8;margin:0 0 6px;max-width:1000px}
+.sub b{color:#111}
+.verdict{
+  max-width:1000px;margin:14px 0 22px;padding:13px 17px;border-radius:12px;
+  background:#fff;border:1px solid var(--line);border-left:4px solid #7a5af8;
+  font-size:13px;line-height:2;
+}
+.verdict .yes{color:#12864a;font-weight:700}
+.verdict .no{color:#c6284a;font-weight:700}
+
+.panel{
+  max-width:1180px;background:#fff;border:1px solid var(--line);border-radius:16px;
+  padding:20px;box-shadow:0 6px 26px rgba(80,60,130,.07);
+}
+.drop{
+  border:2px dashed #c9bded;border-radius:14px;padding:30px 20px;text-align:center;
+  background:#faf8ff;cursor:pointer;transition:.18s;
+}
+.drop:hover,.drop.over{background:#f2ecff;border-color:#7a5af8}
+.drop .big{font-size:15.5px;font-weight:650;margin-bottom:5px}
+.drop .small{font-size:12.5px;color:#8079 90;color:#807990}
+
+.ctrls{display:flex;flex-wrap:wrap;gap:18px;margin-top:18px;align-items:flex-end}
+.ctl{display:flex;flex-direction:column;gap:7px}
+.ctl label{font-size:11.5px;font-weight:650;color:#6b6478;letter-spacing:.4px}
+.ctl input[type=range]{width:190px;accent-color:#7a5af8}
+.ctl .val{font-size:12px;color:#7a5af8;font-weight:700;font-variant-numeric:tabular-nums}
+select{
+  font:inherit;font-size:13px;padding:7px 11px;border-radius:9px;
+  border:1px solid #d8d0e8;background:#fff;color:var(--ink);cursor:pointer;
+}
+.chk{display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;user-select:none}
+.chk input{width:16px;height:16px;accent-color:#7a5af8;cursor:pointer}
+.btn{
+  font:inherit;font-size:13.5px;font-weight:650;padding:9px 18px;border-radius:10px;
+  border:1px solid #d8d0e8;background:#fff;color:var(--ink);cursor:pointer;transition:.15s;
+}
+.btn:hover{background:#f4f1fb}
+.btn.primary{background:#7a5af8;color:#fff;border-color:#7a5af8}
+.btn.primary:hover{background:#6a48f0}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+.result{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:20px}
+@media (max-width:760px){.result{grid-template-columns:1fr}}
+.box{background:#faf8ff;border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center}
+.box .t{font-size:11.5px;font-weight:650;color:#8079 90;color:#807990;margin-bottom:9px;letter-spacing:.4px}
+.box canvas{
+  max-width:100%;image-rendering:pixelated;
+  border-radius:8px;
+  background:
+    repeating-conic-gradient(#eee 0% 25%, #fff 0% 50%) 50%/16px 16px;
+}
+.info{font-size:11.5px;color:#8079 90;color:#807990;margin-top:8px;line-height:1.7}
+
+.pal{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}
+.pal i{width:20px;height:20px;border-radius:5px;display:block;border:1px solid rgba(0,0,0,.13)}
+
+.gallery{max-width:1180px;margin-top:24px;background:#fff;border:1px solid var(--line);
+  border-radius:16px;padding:20px;box-shadow:0 6px 26px rgba(80,60,130,.07)}
+.gallery h2{font-size:16px;margin:0 0 14px}
+.grow{display:flex;gap:16px;flex-wrap:wrap}
+.gitem{text-align:center}
+.gitem .cap{font-size:11.5px;color:#8079 90;color:#807990;margin-top:6px}
+.gitem img{image-rendering:pixelated;border-radius:8px;background:
+  repeating-conic-gradient(#eee 0% 25%, #fff 0% 50%) 50%/14px 14px;display:block}
+</style>
+</head>
+<body>
+
+<h1>🕹 像素画生成器</h1>
+<p class="sub">
+  拖一张图进来 → 立刻变成**统一风格的像素画**（可选描边、限定调色板、一键抠背景）。<br>
+  全部在浏览器里算，不上传任何东西。
+</p>
+
+<div class="verdict">
+  <span class="yes">✅ 能做到</span>：给一张图 → 转成像素画（这就是我擅长的，因为像素画 = 网格 + 有限调色板，可以用代码精确控制）<br>
+  <span class="yes">✅ 能做到</span>：用代码"画"像素画（脚本里写网格，我来摆每个格子）<br>
+  <span class="no">❌ 做不到</span>：给我一个词（"画个火龙"）→ 生成图片。我没有图像生成模型，不知道火龙长什么样<br>
+  <span style="color:#8a6d1a;font-weight:700">💡 但是</span>：<b>"像素化"这条路反而更好用</b> —— 你可以去任何地方找图，
+  <b>水印、风格不统一、尺寸不一样</b>，这套工具全给你统一成同一个画风。60 张牌一次全转完。
+</div>
+
+<div class="panel">
+  <div class="drop" id="drop">
+    <div class="big">把图片拖到这里，或者点一下选文件</div>
+    <div class="small">PNG / JPG / WebP 都行　·　建议主体清晰、背景干净</div>
+    <input type="file" id="file" accept="image/*" style="display:none">
+  </div>
+
+  <div class="ctrls">
+    <div class="ctl">
+      <label>像素格数（越大越细）</label>
+      <input type="range" id="size" min="8" max="64" value="28">
+      <span class="val" id="sizeV">28 × 28</span>
+    </div>
+    <div class="ctl">
+      <label>调色板</label>
+      <select id="pal">
+        <option value="cards">卡牌彩（9 色）</option>
+        <option value="night">夜空（8 色）</option>
+        <option value="mono">单色印刷（8 色）</option>
+        <option value="sweet">甜点（8 色）</option>
+      </select>
+      <div class="pal" id="palPreview"></div>
+    </div>
+    <div class="ctl">
+      <label>放大倍数</label>
+      <input type="range" id="scale" min="1" max="12" value="6">
+      <span class="val" id="scaleV">6×</span>
+    </div>
+    <label class="chk"><input type="checkbox" id="outline" checked>加描边</label>
+    <label class="chk"><input type="checkbox" id="rmbg" checked>抠背景</label>
+    <label class="chk"><input type="checkbox" id="wm" checked>去水印</label>
+    <button class="btn primary" id="dl" disabled>⬇ 下载 PNG</button>
+  </div>
+
+  <div class="result">
+    <div class="box">
+      <div class="t">原图</div>
+      <canvas id="srcC"></canvas>
+      <div class="info" id="srcInfo">还没选图</div>
+    </div>
+    <div class="box">
+      <div class="t">像素画</div>
+      <canvas id="outC"></canvas>
+      <div class="info" id="outInfo">—</div>
+    </div>
+  </div>
+</div>
+
+<div class="gallery">
+  <h2>📦 小尺寸实际效果（这些是游戏里真正会用的尺寸）</h2>
+  <div class="grow" id="grow"></div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+//  像素画生成器（纯浏览器，无依赖）
+//    算法：边缘统计主色 → 洪水填充抠背景 → BOX 降采样到格子
+//          → 每格映射到最近调色板色 → 可选描边 → NEAREST 放大
+//  ⚠️ 和 Python 版 _tools/pixelart.py 是同一套算法
+// ══════════════════════════════════════════════════════════════
+const PALETTES = {
+  cards: [[0x2B,0x1E,0x2E],[0x6B,0x4A,0x3A],[0xD9,0x4B,0x3B],[0xF2,0x8C,0x3C],
+          [0xF7,0xD1,0x54],[0x7A,0xC7,0x4F],[0x4E,0x9A,0xD9],[0x9B,0x5D,0xE5],[0xF2,0xE8,0xD8]],
+  night: [[0x0B,0x0E,0x22],[0x1B,0x22,0x45],[0x2E,0x3A,0x6B],[0x4A,0x5A,0x9E],
+          [0x7B,0x8C,0xC9],[0xB8,0xC4,0xE8],[0xE8,0xDF,0xF7],[0xFF,0xE9,0xB8]],
+  mono:  [[0x14,0x14,0x16],[0x2E,0x2E,0x33],[0x4A,0x4A,0x52],[0x6E,0x6E,0x78],
+          [0x96,0x96,0xA0],[0xC2,0xC2,0xCA],[0xE4,0xE4,0xE8],[0xFA,0xFA,0xFC]],
+  sweet: [[0x5A,0x3A,0x4A],[0xC9,0x6B,0x8E],[0xF2,0x9E,0xB8],[0xFF,0xC9,0xD9],
+          [0xFF,0xE3,0xC4],[0xF7,0xD1,0x54],[0x9B,0xE0,0xC4],[0xFF,0xFA,0xF2]],
+};
+const $ = (s) => document.querySelector(s);
+let srcImg = null;
+
+// ── 边缘统计主色 ──
+function detectBg(data, w, h, band, cover) {
+  band = Math.min(band, (h / 6) | 0, (w / 6) | 0) || 1;
+  const cnt = new Map();
+  const add = (i) => {
+    const k = (data[i] >> 3) + "," + (data[i + 1] >> 3) + "," + (data[i + 2] >> 3);
+    cnt.set(k, (cnt.get(k) || 0) + 1);
+  };
+  for (let y = 0; y < band; y++) for (let x = 0; x < w; x++) { add((y * w + x) * 4); add(((h - 1 - y) * w + x) * 4); }
+  for (let x = 0; x < band; x++) for (let y = 0; y < h; y++) { add((y * w + x) * 4); add((y * w + (w - 1 - x)) * 4); }
+  const arr = [...cnt.entries()].sort((a, b) => b[1] - a[1]);
+  const total = arr.reduce((s, e) => s + e[1], 0);
+  const out = []; let acc = 0;
+  for (const [k, n] of arr) {
+    out.push(k.split(",").map((v) => (+v) * 8 + 4));
+    acc += n;
+    if (acc / total >= cover) break;
+  }
+  return out;
+}
+
+// ── 洪水填充：只删和边缘连通的背景 ──
+function floodBg(data, w, h, bgs, tol, killNeutral) {
+  const isBg = new Uint8Array(w * h);
+  const tol2 = tol * tol;
+  for (let i = 0, p = 0; i < w * h; i++, p += 4) {
+    const r = data[p], g = data[p + 1], b = data[p + 2];
+    let like = false;
+    for (const c of bgs) {
+      const dr = r - c[0], dg = g - c[1], db = b - c[2];
+      if (dr * dr + dg * dg + db * db < tol2) { like = true; break; }
+    }
+    if (!like && killNeutral) {
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      if (mx - mn < 20 && mn > 150) like = true;
+    }
+    isBg[i] = like ? 1 : 0;
+  }
+  const out = new Uint8Array(w * h);
+  const stack = [];
+  for (let x = 0; x < w; x++) { stack.push(x); stack.push((h - 1) * w + x); }
+  for (let y = 0; y < h; y++) { stack.push(y * w); stack.push(y * w + w - 1); }
+  while (stack.length) {
+    const i = stack.pop();
+    if (out[i] || !isBg[i]) continue;
+    out[i] = 1;
+    const y = (i / w) | 0, x = i - y * w;
+    if (y > 0) stack.push(i - w);
+    if (y < h - 1) stack.push(i + w);
+    if (x > 0) stack.push(i - 1);
+    if (x < w - 1) stack.push(i + 1);
+  }
+  return out;
+}
+
+// ── 主流程 ──
+function convert() {
+  if (!srcImg) return;
+  const PAL = PALETTES[$("#pal").value];
+  const size = +$("#size").value;
+  const scale = +$("#scale").value;
+  const doOutline = $("#outline").checked;
+  const doRmbg = $("#rmbg").checked;
+  const doWm = $("#wm").checked;
+
+  // 先缩到"格子数"再取样（浏览器里用 canvas 的 imageSmoothing 做平均）
+  const iw = srcImg.naturalWidth, ih = srcImg.naturalHeight;
+  let gw, gh;
+  if (iw >= ih) { gw = size; gh = Math.max(1, Math.round(size * ih / iw)); }
+  else { gh = size; gw = Math.max(1, Math.round(size * iw / ih)); }
+
+  // ① 原始像素（用来算背景）
+  const c0 = document.createElement("canvas"); c0.width = iw; c0.height = ih;
+  const g0 = c0.getContext("2d"); g0.drawImage(srcImg, 0, 0);
+  const d0 = g0.getImageData(0, 0, iw, ih).data;
+
+  // ② 缩到格子尺寸
+  const c1 = document.createElement("canvas"); c1.width = gw; c1.height = gh;
+  const g1 = c1.getContext("2d");
+  g1.imageSmoothingEnabled = true; g1.imageSmoothingQuality = "high";
+  g1.drawImage(srcImg, 0, 0, gw, gh);
+  const d1 = g1.getImageData(0, 0, gw, gh);
+
+  // ③ 抠背景（在原始分辨率上判断，再映射到格子）
+  let alpha = null;
+  if (doRmbg) {
+    const bgs = detectBg(d0, iw, ih, 14, 0.92);
+    const isBg = floodBg(d0, iw, ih, bgs, 34, doWm);
+    // 映射到格子：该格里背景占比 > 55% → 这格透明
+    alpha = new Float32Array(gw * gh).fill(1);
+    for (let gy = 0; gy < gh; gy++) {
+      for (let gx = 0; gx < gw; gx++) {
+        const x0 = Math.floor(gx * iw / gw), x1 = Math.max(x0 + 1, Math.floor((gx + 1) * iw / gw));
+        const y0 = Math.floor(gy * ih / gh), y1 = Math.max(y0 + 1, Math.floor((gy + 1) * ih / gh));
+        let bgN = 0, tot = 0;
+        for (let y = y0; y < y1; y += 2) for (let x = x0; x < x1; x += 2) { tot++; if (isBg[y * iw + x]) bgN++; }
+        alpha[gy * gw + gx] = tot && bgN / tot > 0.55 ? 0 : 1;
+      }
+    }
+  }
+
+  // ④ 每格映射到调色板最近色
+  const out = g1.createImageData(gw, gh);
+  const od = out.data;
+  for (let i = 0, p = 0; i < gw * gh; i++, p += 4) {
+    const r = d1.data[p], g = d1.data[p + 1], b = d1.data[p + 2];
+    let best = 0, bestD = Infinity;
+    for (let k = 0; k < PAL.length; k++) {
+      const c = PAL[k];
+      const dr = r - c[0], dg = g - c[1], db = b - c[2];
+      const dd = dr * dr + dg * dg + db * db;
+      if (dd < bestD) { bestD = dd; best = k; }
+    }
+    const c = PAL[best];
+    od[p] = c[0]; od[p + 1] = c[1]; od[p + 2] = c[2];
+    od[p + 3] = alpha ? Math.round(alpha[i] * 255) : 255;
+  }
+  g1.putImageData(out, 0, 0);
+
+  // ⑤ 描边（只描"透明但周围 >=2 个不透明"的格子）
+  if (doOutline) {
+    const img = g1.getImageData(0, 0, gw, gh);
+    const a = new Uint8Array(gw * gh);
+    for (let i = 0; i < gw * gh; i++) a[i] = img.data[i * 4 + 3] > 127 ? 1 : 0;
+    const ink = PAL[0];
+    for (let y = 0; y < gh; y++) {
+      for (let x = 0; x < gw; x++) {
+        const i = y * gw + x;
+        if (a[i]) continue;
+        let n = 0;
+        if (y > 0) n += a[i - gw];
+        if (y < gh - 1) n += a[i + gw];
+        if (x > 0) n += a[i - 1];
+        if (x < gw - 1) n += a[i + 1];
+        if (n >= 2) {
+          img.data[i * 4] = ink[0]; img.data[i * 4 + 1] = ink[1];
+          img.data[i * 4 + 2] = ink[2]; img.data[i * 4 + 3] = 255;
+        }
+      }
+    }
+    g1.putImageData(img, 0, 0);
+  }
+
+  // ⑥ 放大输出
+  const oc = $("#outC");
+  oc.width = gw * scale; oc.height = gh * scale;
+  const og = oc.getContext("2d");
+  og.imageSmoothingEnabled = false;
+  og.clearRect(0, 0, oc.width, oc.height);
+  og.drawImage(c1, 0, 0, oc.width, oc.height);
+
+  $("#outInfo").textContent = gw + " × " + gh + " 格　·　放大 " + scale + "×　·　输出 " + oc.width + " × " + oc.height;
+  $("#dl").disabled = false;
+}
+
+// ── 载入图 ──
+function loadFile(f) {
+  if (!f || !/^image\//.test(f.type)) { alert("请选图片文件"); return; }
+  const url = URL.createObjectURL(f);
+  const im = new Image();
+  im.onload = () => {
+    srcImg = im;
+    const sc = $("#srcC");
+    const maxW = 420, k = Math.min(1, maxW / im.naturalWidth);
+    sc.width = im.naturalWidth * k; sc.height = im.naturalHeight * k;
+    const g = sc.getContext("2d"); g.imageSmoothingQuality = "high";
+    g.clearRect(0, 0, sc.width, sc.height);
+    g.drawImage(im, 0, 0, sc.width, sc.height);
+    $("#srcInfo").textContent = im.naturalWidth + " × " + im.naturalHeight + "　(" + Math.round(f.size / 1024) + " KB)";
+    convert();
+    URL.revokeObjectURL(url);
+  };
+  im.src = url;
+}
+
+$("#file").onchange = (e) => loadFile(e.target.files[0]);
+const drop = $("#drop");
+drop.onclick = () => $("#file").click();
+["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; loadFile(f); });
+
+// 控件联动
+$("#size").oninput = () => { $("#sizeV").textContent = $("#size").value + " × " + $("#size").value; convert(); };
+$("#scale").oninput = () => { $("#scaleV").textContent = $("#scale").value + "×"; convert(); };
+["pal", "outline", "rmbg", "wm"].forEach((id) => { $("#" + id).onchange = convert; });
+
+// 调色板预览
+function showPal() {
+  const PAL = PALETTES[$("#pal").value];
+  $("#palPreview").innerHTML = PAL.map((c) =>
+    '<i style="background:rgb(' + c.join(",") + ')"></i>').join("");
+}
+$("#pal").onchange = () => { showPal(); convert(); };
+showPal();
+
+$("#dl").onclick = () => {
+  const a = document.createElement("a");
+  a.download = "pixelart.png";
+  a.href = $("#outC").toDataURL("image/png");
+  a.click();
+};
+
+// ── 小尺寸示例（用代码"画"的像素画，展示游戏里真正用的尺寸）──
+const EXAMPLES = [
+  { name: "西瓜（你给的那张转的）", src: "images/_pixeltest/wmF_24.png" },
+  { name: "西瓜 · 单色印刷风", src: "images/_pixeltest/wm_mono.png" },
+  { name: "西瓜 · 甜点风", src: "images/_pixeltest/wm_sweet.png" },
+];
+$("#grow").innerHTML = EXAMPLES.map((e) =>
+  '<div class="gitem"><img src="' + e.src + '" width="144" height="144" alt="' + e.name + '">' +
+  '<div class="cap">' + e.name + '</div></div>').join("");
+</script>
+</body>
+</html>
