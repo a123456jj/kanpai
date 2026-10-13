@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>🍉 你的手绘稿 → 卡牌图案</title>
+<style>
+:root{ --ink:#241a2c; --line:#e6e1ef; }
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:#f7f5fb;color:var(--ink);padding:24px 18px 70px;
+  font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif}
+h1{font-size:22px;margin:0 0 8px}
+.sub{font-size:13.5px;line-height:1.9;color:#6b6478;max-width:1080px;margin:0 0 22px}
+.sub b{color:#111}
+
+.wrap{display:grid;grid-template-columns:1fr 1.25fr;gap:20px;max-width:1080px}
+@media (max-width:900px){.wrap{grid-template-columns:1fr}}
+.card2{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;
+  box-shadow:0 6px 26px rgba(80,60,130,.07)}
+.card2 h2{font-size:15px;margin:0;padding:13px 18px 11px;background:#faf8ff;border-bottom:1px solid var(--line)}
+.card2 .body{padding:18px}
+
+.steps{font-size:13px;line-height:2.1;color:#5c5566}
+.steps b{color:#111}
+.steps code{background:#f3f0fa;padding:1px 6px;border-radius:4px;font-size:12px}
+.steps .num{display:inline-block;width:20px;height:20px;line-height:20px;text-align:center;
+  background:#7a5af8;color:#fff;border-radius:5px;font-size:11.5px;font-weight:700;margin-right:7px}
+
+.checks{list-style:none;padding:0;margin:0;font-size:13px;line-height:2.1}
+.checks li:before{content:"□ ";color:#7a5af8;font-weight:700}
+.checks li.done:before{content:"✅ ";}
+
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{text-align:left;padding:8px 9px;border-bottom:1px solid #f0ecf6;vertical-align:middle}
+th{font-weight:600;color:#6b6478;font-size:11.5px}
+td img{image-rendering:auto;vertical-align:middle}
+
+.preview{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;justify-content:center}
+.pv{text-align:center}
+.pv .cap{font-size:11.5px;color:#6b6478;margin-top:7px}
+
+.tip{background:#fffbef;border:1px solid #f0e2c0;border-radius:10px;padding:12px 15px;
+  font-size:12.5px;line-height:1.9;color:#7a6a3c;margin-top:14px}
+.tip b{color:#5c4a14}
+</style>
+</head>
+<body>
+
+<h1>🍉 你的手绘稿 → 卡牌图案（已经处理好了）</h1>
+<p class="sub">
+  你这张画得比我想象的好 —— <b>形状清楚、颜色对、有细节趣味</b>。而且它是 <b>RGBA 透明底</b>，处理起来很干净。<br>
+  我做的是「把你的画规格化」，<b>没有重画你的形状</b>。下面看效果。
+</p>
+
+<div class="wrap">
+
+  <div class="card2">
+    <h2>📦 处理结果</h2>
+    <div class="body">
+      <div class="preview">
+        <div class="pv">
+          <img src="images/user/_out/卡牌预览.png" width="174" alt="">
+          <div class="cap">放进卡牌（放大 3 倍）</div>
+        </div>
+        <div class="pv">
+          <img src="images/user/_out/西瓜_96.png" width="96" height="96" alt=""
+               style="background:repeating-conic-gradient(#eee 0% 25%,#fff 0% 50%) 50%/12px 12px;border-radius:6px">
+          <div class="cap">96×96（游戏用）</div>
+        </div>
+      </div>
+      <div class="tip">
+        <b>我做了什么：</b><br>
+        ① 按 alpha 通道裁到内容（正方形，留 7% 边距）<br>
+        ② 缩放到 96×96 / 64×64 / 48×48 三档<br>
+        ③ 放大时做了轻微锐化，边缘干净但不糊<br>
+        <b>没有做的：</b>没重画、没改颜色、没加描边（保留你原本的手感）
+      </div>
+    </div>
+  </div>
+
+  <div class="card2">
+    <h2>🔍 不同尺寸下清不清楚</h2>
+    <div class="body">
+      <img src="images/user/_out/尺寸对比.png" style="width:100%;border-radius:8px" alt="">
+      <div class="tip">
+        <b>结论：</b>你这个简笔画在 <b>24px 都能认出来</b>（因为形状简洁、色块大）。<br>
+        这意味着手牌做成很小的尺寸也没问题 —— 而且文件极小（96px 版本只有 <b>4.8 KB</b>）。
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="card2" style="max-width:1080px;margin-top:20px">
+  <h2>🔄 如果你想让笔画更"粗"一点（可选）</h2>
+  <div class="body">
+    <table>
+      <tr><th style="width:22%">方案</th><th style="width:78%">说明</th></tr>
+      <tr>
+        <td><b>A 保持原样</b></td>
+        <td>你现在的样子。线条细一点，观感轻快 —— <b>我推荐先这样</b>，因为这是你的手感</td>
+      </tr>
+      <tr>
+        <td><b>B 加粗描边</b></td>
+        <td>我在轮廓外扩 2px 加一圈深色描边 → 更像"贴纸"、在深色背景上更清楚。<b>代价：手绘感会减弱一点</b></td>
+      </tr>
+      <tr>
+        <td><b>C 像素化</b></td>
+        <td>转成 32×32 像素画 → 更"游戏化"，但会丢掉你笔触的细节</td>
+      </tr>
+    </table>
+    <div class="tip" style="margin-top:12px">
+      告诉我选哪个，我就按那个方案批量处理。<b>60 张一次过。</b>
+    </div>
+  </div>
+</div>
+
+<div class="card2" style="max-width:1080px;margin-top:20px">
+  <h2>📝 你接下来怎么画（画 60 张的实用建议）</h2>
+  <div class="body">
+    <p style="font-size:13px;line-height:2;margin:0 0 12px">
+      你这套画法<b>完全可以复制到 60 张</b>。为了让 60 张看起来像一套，建议统一这几条：
+    </p>
+    <ul class="checks">
+      <li class="done"><b>画布尺寸统一</b>：240×240 或 512×512（你现在就是 240，很好）</li>
+      <li class="done"><b>透明背景</b>：导出 PNG 并勾选"透明背景"（你已经是了）</li>
+      <li><b>主体占画布 60~75%</b>，四周留白（不要贴边）</li>
+      <li><b>主体居中</b>（稍微偏一点没关系，我统一居中）</li>
+      <li><b>线条粗细统一</b>：选一个笔刷宽度，60 张都用它</li>
+      <li><b>颜色控制在 3~5 个</b>：像你这张（红/绿/黑）就很好</li>
+      <li><b>不要加阴影和渐变</b>：平涂色块最统一，我在代码里也能统一加效果</li>
+      <li><b>不要写文字</b>：牌名由游戏显示，画里写字会和 UI 打架</li>
+      <li><b>不要画背景</b>：只要主体（背景会破坏卡牌的干净感）</li>
+    </ul>
+    <div class="tip">
+      <b>最重要的一条：别追求"画得好"。</b><br>
+      60 张风格一致 > 单张精美。你现在这张"有点歪、有点手抖"反而正是它好看的原因 ——
+      比 AI 图那种平均化的完美更有味道。
+    </div>
+  </div>
+</div>
+
+<div class="card2" style="max-width:1080px;margin-top:20px">
+  <h2>⚙️ 画完之后怎么交给我</h2>
+  <div class="body steps">
+    <div><span class="num">1</span>把所有图放进一个文件夹，<b>文件名 = 牌名</b></div>
+    <div style="margin-left:27px;font-size:12.5px;color:#7a7288;line-height:1.9">
+      例如：<code>西瓜.png</code> <code>土豆地雷.png</code> <code>毒鸡汤.png</code> <code>一拳.png</code> …<br>
+      （名字必须和游戏里的牌名一模一样，不然对不上）
+    </div>
+    <div style="margin-top:10px"><span class="num">2</span>文件夹拖给我，或者告诉我路径</div>
+    <div style="margin-top:10px"><span class="num">3</span>我跑一次批量脚本：</div>
+    <div style="margin-left:27px;font-size:12.5px;color:#7a7288;line-height:1.9">
+      裁到内容 → 统一居中 → 输出 96px → 生成游戏用的图集 → 接进游戏
+    </div>
+    <div style="margin-top:10px"><span class="num">4</span>你刷新游戏页面 → 卡牌就是你画的图</div>
+    <div class="tip" style="margin-left:0">
+      <b>不用一次交 60 张。</b>先交 3~5 张，我把游戏接上让你看效果，确认了再画剩下的。
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

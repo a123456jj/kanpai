@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>🥔 像素风 UI 方案</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════
+   🥔 像素风 UI —— 用真·像素画素材 + 一套统一的设计体系
+    设计体系（这是重点，不是配色）：
+      间距：4 的倍数（4 / 8 / 12 / 16 / 24 / 32）
+      圆角：只有 2 档（4px 小 / 8px 大）—— 像素风要小圆角
+      描边：统一 2px 深色（像素画的描边也是 2px 的观感）
+      字重：3 档（常规 500 / 中 700 / 重 900）
+      阴影：只有 1 种（2px 硬阴影，像像素）
+      颜色：1 个主色 + 1 个强调 + 4 档中性色（不多）
+   ══════════════════════════════════════════════════════════════════ */
+:root{
+  /* 颜色：从土豆像素画里取的真色 */
+  --ink:      #2E1C14;   /* 最深（描边、正文） */
+  --brown:    #6B472E;   /* 主色 */
+  --tan:      #C09C70;   /* 中间调 */
+  --sand:     #E4CBA6;   /* 浅 */
+  --cream:    #F6EAD2;   /* 最浅（背景） */
+  --paper:    #FCF6EA;   /* 纸白 */
+  --accent:   #B04A3A;   /* 强调（红 — 伤害/危险） */
+  --ok:       #5E8C3A;   /* 绿 — 治疗 */
+  --mana:     #3A6EA8;   /* 蓝 — 能量 */
+
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp6:24px; --sp8:32px;
+  --r1:4px;  --r2:8px;
+  --bd:2px;
+  --shadow: 0 3px 0 var(--ink);
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{
+  background:var(--cream);
+  color:var(--ink);
+  font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+  font-weight:500;
+  padding:var(--sp6) var(--sp4) 60px;
+  /* 纸纹：用两层极淡的点阵，不要糖果色大圆点 */
+  background-image:
+    radial-gradient(circle at 50% 50%, rgba(107,71,46,.055) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 0% 0%, rgba(107,71,46,.035) 0 1px, transparent 1.5px);
+  background-size:12px 12px, 12px 12px;
+  background-position:0 0, 6px 6px;
+}
+h1{font-size:22px;font-weight:900;margin:0 0 var(--sp2);letter-spacing:-.2px}
+.note{font-size:13px;line-height:1.85;color:#6b5748;max-width:940px;margin:0 0 var(--sp6)}
+.note b{color:var(--ink)}
+.note code{background:rgba(107,71,46,.10);padding:1px 5px;border-radius:3px;font-size:12px}
+
+.stage{
+  max-width:1000px;background:var(--paper);border:var(--bd) solid var(--ink);
+  border-radius:var(--r2);box-shadow:var(--shadow);overflow:hidden;
+}
+
+/* ── 顶栏 ── */
+.bar{
+  display:flex;align-items:center;gap:var(--sp3);
+  padding:var(--sp3) var(--sp4);
+  background:var(--sand);border-bottom:var(--bd) solid var(--ink);
+}
+.bar .brand{font-weight:900;font-size:15px;letter-spacing:.5px}
+.pill{
+  font-size:12px;font-weight:700;padding:3px 10px;border-radius:var(--r1);
+  background:var(--paper);border:var(--bd) solid var(--ink);
+}
+.bar .sp{margin-left:auto}
+.btn{
+  font:inherit;font-size:13px;font-weight:700;padding:7px 14px;border-radius:var(--r1);
+  border:var(--bd) solid var(--ink);background:var(--paper);color:var(--ink);
+  cursor:pointer;box-shadow:0 2px 0 var(--ink);transition:.08s;
+}
+.btn:hover{transform:translateY(-1px);box-shadow:0 3px 0 var(--ink)}
+.btn:active{transform:translateY(2px);box-shadow:0 0 0 var(--ink)}
+.btn.primary{background:var(--brown);color:var(--cream)}
+
+/* ── 棋盘 ── */
+.board{display:flex;flex-direction:column}
+.seat{display:flex;align-items:center;gap:var(--sp3);padding:var(--sp3) var(--sp4)}
+.avatar{
+  width:44px;height:44px;border-radius:var(--r1);flex:none;
+  border:var(--bd) solid var(--ink);background:var(--sand);
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
+}
+.avatar img{width:38px;height:38px;image-rendering:pixelated;display:block}
+.who{font-weight:900;font-size:14px}
+.stats{display:flex;gap:var(--sp4);margin-top:var(--sp1)}
+.st{font-size:12px;font-weight:500;color:#6b5748;display:flex;align-items:baseline;gap:4px}
+.st b{font-size:14px;font-weight:900;color:var(--ink);font-variant-numeric:tabular-nums}
+/* 血条：分段像素格，不是圆滑条 */
+.hp{display:flex;gap:2px;margin-left:auto;flex:none}
+.hp i{width:9px;height:16px;border:1.5px solid var(--ink);border-radius:2px;background:var(--paper)}
+.hp i.on{background:var(--ok)}
+.hp i.on.low{background:var(--accent)}
+
+.mid{
+  display:flex;align-items:center;justify-content:center;gap:var(--sp4);
+  padding:var(--sp2) var(--sp4);font-size:12px;font-weight:700;color:#6b5748;
+  border-top:var(--bd) solid rgba(46,28,20,.16);
+  border-bottom:var(--bd) solid rgba(46,28,20,.16);
+  background:rgba(228,203,166,.35);
+}
+.log{padding:var(--sp3) var(--sp4);font-size:12.5px;line-height:1.9;color:#5c4738;min-height:76px}
+.log .hl{color:var(--accent);font-weight:700}
+.log .hl2{color:var(--mana);font-weight:700}
+
+/* ── 手牌：真像素画 ── */
+.hand{
+  display:flex;gap:var(--sp2);justify-content:center;flex-wrap:wrap;
+  padding:var(--sp4);background:var(--sand);
+  border-top:var(--bd) solid var(--ink);
+}
+.card{
+  width:92px;border:var(--bd) solid var(--ink);border-radius:var(--r1);
+  background:var(--paper);box-shadow:0 3px 0 var(--ink);cursor:pointer;
+  overflow:hidden;transition:.1s;position:relative;
+}
+.card:hover{transform:translateY(-6px);box-shadow:0 7px 0 var(--ink)}
+.card .art{
+  height:66px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(180deg,#fffdf8,#f2e6d2);
+  border-bottom:1.5px solid rgba(46,28,20,.2);
+}
+.card .art img{image-rendering:pixelated;display:block}
+.card .nm{
+  font-size:11.5px;font-weight:700;text-align:center;padding:5px 3px;
+}
+.card .cost{
+  position:absolute;top:3px;left:3px;min-width:18px;height:18px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:900;color:var(--cream);
+  background:var(--mana);border:1.5px solid var(--ink);border-radius:3px;
+}
+.card.dis{opacity:.42;filter:grayscale(.7)}
+
+/* ── 像素画的"三档尺寸"示例 ── */
+.row{display:flex;gap:var(--sp4);flex-wrap:wrap;align-items:flex-end;margin-top:var(--sp4)}
+.tile{text-align:center}
+.tile .cap{font-size:11px;font-weight:700;color:#6b5748;margin-top:5px}
+.tile img{image-rendering:pixelated;display:block;border:var(--bd) solid var(--ink);border-radius:var(--r1);background:var(--paper)}
+
+.spec{max-width:1000px;margin-top:var(--sp6);background:var(--paper);border:var(--bd) solid var(--ink);
+  border-radius:var(--r2);box-shadow:var(--shadow);padding:var(--sp4)}
+.spec h2{font-size:15px;font-weight:900;margin:0 0 var(--sp3)}
+.spec table{width:100%;border-collapse:collapse;font-size:12.5px}
+.spec th,.spec td{text-align:left;padding:7px 8px;border-bottom:1px solid rgba(46,28,20,.14)}
+.spec th{font-weight:700;color:#6b5748;font-size:11.5px}
+.spec .sw{display:inline-block;width:15px;height:15px;border:1.5px solid var(--ink);
+  border-radius:3px;vertical-align:-3px;margin-right:5px}
+</style>
+</head>
+<body>
+
+<h1>🥔 像素风 UI —— 用真素材 + 一套设计体系</h1>
+<p class="note">
+  这一版和之前的区别：<b>不是换配色，是立体系</b>。<br>
+  ① 卡牌图案用<b>真像素画</b>（我代码画的土豆），不再用 emoji<br>
+  ② <b>间距全部是 4 的倍数</b>：4 / 8 / 12 / 16 / 24 / 32（之前是随手写 8/11/14/17）<br>
+  ③ <b>圆角只有 2 档</b>：4px / 8px（之前有 8 种取值）<br>
+  ④ <b>描边统一 2px</b>、<b>阴影只有一种</b>（0 3px 0，像像素偏移）<br>
+  ⑤ <b>颜色只有 8 个</b>，全部从土豆像素画里取的真色（不再有随手加的渐变）<br>
+  ⑥ 血条改成<b>分段像素格</b>（不是圆滑条）—— 和像素画同一个语言
+</p>
+
+<div class="stage">
+  <div class="bar">
+    <span class="brand">卡牌对决</span>
+    <span class="pill">你的回合</span>
+    <span class="sp"></span>
+    <button class="btn">设置</button>
+    <button class="btn primary">结束回合</button>
+  </div>
+  <div class="board">
+    <div class="seat">
+      <div class="avatar"><img src="images/pixel/土豆.png" alt=""></div>
+      <div>
+        <div class="who">对手</div>
+        <div class="stats">
+          <span class="st">血量 <b>18</b></span>
+          <span class="st">能量 <b>7</b></span>
+          <span class="st">手牌 <b>5</b></span>
+        </div>
+      </div>
+      <div class="hp" id="hpOpp"></div>
+    </div>
+    <div class="mid">牌库 32 · 弃牌 15 · 无待决策</div>
+    <div class="log">
+      第 6 回合 · 你<br>
+      对手打出「闪电」，造成 <span class="hl">5 点伤害</span><br>
+      你打出「毒鸡汤」，对手进入中毒<br>
+      中毒生效，对手受到 <span class="hl">1 点伤害</span>
+    </div>
+    <div class="seat">
+      <div class="avatar"><img src="images/pixel/土豆地雷.png" alt=""></div>
+      <div>
+        <div class="who">你</div>
+        <div class="stats">
+          <span class="st">血量 <b>7</b></span>
+          <span class="st">能量 <b>8</b>/10</span>
+          <span class="st">手牌 <b>5</b>/5</span>
+        </div>
+      </div>
+      <div class="hp" id="hpMe"></div>
+    </div>
+    <div class="hand">
+      <div class="card"><span class="cost">1</span>
+        <div class="art"><img src="images/pixel/土豆.png" width="38" height="31" alt=""></div>
+        <div class="nm">土豆</div></div>
+      <div class="card"><span class="cost">1</span>
+        <div class="art"><img src="images/pixel/土豆地雷.png" width="46" height="33" alt=""></div>
+        <div class="nm">土豆地雷</div></div>
+      <div class="card dis"><span class="cost">7</span>
+        <div class="art"><img src="images/pixel/土豆.png" width="38" height="31" alt="" style="filter:grayscale(1)"></div>
+        <div class="nm">能量不够</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="spec">
+  <h2>📐 设计体系（这才是治"塑料感"的东西）</h2>
+  <table>
+    <tr><th>项目</th><th>之前（乱）</th><th>现在（体系）</th></tr>
+    <tr><td>间距</td><td>8 / 11 / 14 / 17 混用</td><td><b>4 / 8 / 12 / 16 / 24 / 32</b>（全是 4 的倍数）</td></tr>
+    <tr><td>圆角</td><td>6 / 9 / 11 / 14 / 16 / 18 / 20 / 34</td><td><b>4px（小）· 8px（大）</b>—— 像素风要小圆角</td></tr>
+    <tr><td>描边</td><td>1~4px 都有</td><td><b>统一 2px</b></td></tr>
+    <tr><td>阴影</td><td>3 种（软阴影 + 硬阴影 + 发光）</td><td><b>1 种</b>：<code>0 3px 0 深色</code>（像素偏移感）</td></tr>
+    <tr><td>字重</td><td>只有 bold 和 900</td><td><b>3 档</b>：500 常规 / 700 中 / 900 重</td></tr>
+    <tr><td>颜色</td><td>随意加的渐变和霓虹粉</td><td><b>8 个</b>，全部取自像素画真色</td></tr>
+    <tr><td>血条</td><td>圆滑渐变条</td><td><b>分段像素格</b>（和像素画同一语言）</td></tr>
+    <tr><td>背景</td><td>糖果色大圆点</td><td><b>细点阵纸纹</b>（12px 网格，双层错位）</td></tr>
+  </table>
+  <div style="margin-top:14px;font-size:12.5px;line-height:1.9;color:#6b5748">
+    <b>色板（全部从土豆像素画里取）：</b><br>
+    <span class="sw" style="background:#2E1C14"></span>#2E1C14 最深　
+    <span class="sw" style="background:#6B472E"></span>#6B472E 主色　
+    <span class="sw" style="background:#C09C70"></span>#C09C70 中间调　
+    <span class="sw" style="background:#E4CBA6"></span>#E4CBA6 浅　
+    <span class="sw" style="background:#F6EAD2"></span>#F6EAD2 最浅　
+    <span class="sw" style="background:#B04A3A"></span>#B04A3A 强调(伤害)　
+    <span class="sw" style="background:#5E8C3A"></span>#5E8C3A 绿(治疗)　
+    <span class="sw" style="background:#3A6EA8"></span>#3A6EA8 蓝(能量)
+  </div>
+</div>
+
+<div class="spec">
+  <h2>🥔 像素画素材（我代码画的，不是 emoji）</h2>
+  <div class="row">
+    <div class="tile"><img src="images/pixel/土豆.png" width="96" height="78" alt=""><div class="cap">土豆 32×26</div></div>
+    <div class="tile"><img src="images/pixel/土豆地雷.png" width="120" height="85" alt=""><div class="cap">土豆地雷 48×34</div></div>
+    <div class="tile"><img src="images/_pixeltest/wmF_24.png" width="96" height="96" alt=""><div class="cap">西瓜 24×24（你给的图转的）</div></div>
+    <div class="tile"><img src="images/_pixeltest/wm_mono.png" width="96" height="96" alt=""><div class="cap">西瓜·单色印刷</div></div>
+    <div class="tile"><img src="images/_pixeltest/wm_sweet.png" width="96" height="96" alt=""><div class="cap">西瓜·甜点风</div></div>
+  </div>
+</div>
+
+<script>
+// 血条：分段像素格（18/25 和 7/25）
+function hpBars(el, cur, max, lowAt) {
+  let h = "";
+  for (let i = 0; i < max; i++) {
+    const on = i < cur;
+    h += '<i class="' + (on ? "on" : "") + (on && cur <= lowAt ? " low" : "") + '"></i>';
+  }
+  el.innerHTML = h;
+}
+hpBars(document.getElementById("hpOpp"), 18, 25, 8);
+hpBars(document.getElementById("hpMe"), 7, 25, 8);
+</script>
+</body>
+</html>

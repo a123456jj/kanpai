@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>🎨 三种"卡牌图案"路线对比</title>
+<style>
+:root{ --ink:#241a2c; --line:#e6e1ef; }
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:#f6f4fa;color:var(--ink);padding:24px 18px 70px;
+  font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif}
+h1{font-size:22px;margin:0 0 8px}
+.sub{font-size:13.5px;line-height:1.9;color:#6b6478;max-width:1000px;margin:0 0 22px}
+.sub b{color:#111}
+
+.cols{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;max-width:1240px}
+@media (max-width:980px){.cols{grid-template-columns:1fr}}
+
+.col{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;
+  box-shadow:0 6px 26px rgba(80,60,130,.07)}
+.col header{padding:14px 18px 12px}
+.col header h2{margin:0 0 5px;font-size:16px}
+.col header .sm{font-size:12px;line-height:1.75;color:#6b6478}
+.col.A header{background:linear-gradient(180deg,#fff4e8,#ffe8d0)}
+.col.B header{background:linear-gradient(180deg,#eef7ff,#dceaff)}
+.col.C header{background:linear-gradient(180deg,#f3fff0,#e2f5dc)}
+
+.body{padding:18px;display:flex;flex-direction:column;gap:14px;align-items:center}
+
+/* 卡牌容器（三列共用） */
+.cards{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.card{
+  width:104px;border:2px solid #241a2c;border-radius:6px;background:#fcf7ee;
+  box-shadow:0 3px 0 #241a2c;overflow:hidden;position:relative;
+}
+.card .art{height:74px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(180deg,#fffdf9,#f4ebdc);border-bottom:1.5px solid rgba(36,26,44,.16)}
+.card .nm{font-size:11.5px;font-weight:700;text-align:center;padding:6px 3px}
+.card .cost{position:absolute;top:3px;left:3px;min-width:19px;height:19px;
+  display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;
+  color:#fff;background:#3a6ea8;border:1.5px solid #241a2c;border-radius:3px}
+.emoji{font-size:34px;line-height:1}
+
+.verdict{font-size:12.5px;line-height:1.9;padding:11px 14px;border-radius:10px;
+  background:#faf8ff;border:1px solid var(--line);width:100%}
+.verdict .p{color:#12864a;font-weight:700}
+.verdict .m{color:#c07000;font-weight:700}
+.verdict .n{color:#c6284a;font-weight:700}
+
+.plan{max-width:1240px;margin-top:24px;background:#fff;border:1px solid var(--line);
+  border-radius:16px;padding:20px;box-shadow:0 6px 26px rgba(80,60,130,.07)}
+.plan h2{font-size:16px;margin:0 0 12px}
+.plan table{width:100%;border-collapse:collapse;font-size:13px}
+.plan th,.plan td{text-align:left;padding:9px 10px;border-bottom:1px solid #f0ecf6;vertical-align:top}
+.plan th{font-weight:600;color:#6b6478;font-size:12px}
+.plan .me{color:#7a5af8;font-weight:700}
+.plan .you{color:#c07000;font-weight:700}
+</style>
+</head>
+<body>
+
+<h1>🎨 卡牌图案 —— 三条路，各自的"味道"不一样</h1>
+<p class="sub">
+  你说"AI 图有 AI 味，我做的有代码味"—— 这话对。<b>但三种路线的味道完全不同</b>，你要挑的是"哪种味道你能接受"。<br>
+  下面三列是**同一张牌**（土豆）在三条路线下的样子，你直接看哪个顺眼。
+</p>
+
+<div class="cols">
+
+  <!-- ═══════════ A 像素画 ═══════════ -->
+  <div class="col A">
+    <header>
+      <h2>A · 像素画</h2>
+      <div class="sm">我代码画 · 一块一块摆 · 32×26 格</div>
+    </header>
+    <div class="body">
+      <div class="cards">
+        <div class="card"><span class="cost">1</span>
+          <div class="art"><img src="images/pixel/土豆.png" width="60" height="49" style="image-rendering:pixelated"></div>
+          <div class="nm">土豆</div></div>
+        <div class="card"><span class="cost">1</span>
+          <div class="art"><img src="images/pixel/土豆地雷.png" width="76" height="54" style="image-rendering:pixelated"></div>
+          <div class="nm">土豆地雷</div></div>
+      </div>
+      <div class="verdict">
+        <span class="p">优点</span>：100% 统一、绝对不会"每张画风不一样"、文件极小（每个 700 字节）、我完全可控<br>
+        <span class="m">缺点</span>：像素画本身就是一种风格，喜欢的人很喜欢，不喜欢的人觉得"太复古/太小众"<br>
+        <span class="n">味道</span>：<b>没有"AI味"，但也没有"画师味"</b> —— 它读起来是"刻意的像素风"，不是"画得不好"
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ B 几何符号 ═══════════ -->
+  <div class="col B">
+    <header>
+      <h2>B · 几何符号</h2>
+      <div class="sm">我代码画 · 纯形状 · 按卡牌类别设计</div>
+    </header>
+    <div class="body">
+      <div class="cards">
+        <div class="card"><span class="cost">1</span>
+          <div class="art">
+            <svg width="56" height="56" viewBox="0 0 56 56">
+              <ellipse cx="28" cy="31" rx="20" ry="15" fill="#C09C70" stroke="#2E1C14" stroke-width="3"/>
+              <circle cx="20" cy="27" r="2.6" fill="#6B472E"/>
+              <circle cx="34" cy="34" r="2.6" fill="#6B472E"/>
+              <circle cx="28" cy="24" r="2.2" fill="#6B472E"/>
+              <path d="M28 16 q3 -6 9 -7" fill="none" stroke="#5E8C3A" stroke-width="3" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="nm">土豆</div></div>
+        <div class="card"><span class="cost">1</span>
+          <div class="art">
+            <svg width="56" height="56" viewBox="0 0 56 56">
+              <ellipse cx="28" cy="34" rx="19" ry="14" fill="#C09C70" stroke="#2E1C14" stroke-width="3"/>
+              <circle cx="22" cy="31" r="2.4" fill="#6B472E"/>
+              <circle cx="33" cy="37" r="2.4" fill="#6B472E"/>
+              <path d="M28 20 q4 -8 12 -9" fill="none" stroke="#55555E" stroke-width="2.5" stroke-linecap="round"/>
+              <path d="M40 11 l2.4 4.4 4.6 1.2 -4 3 1 4.6 -4.4 -2.4 -4.4 2.4 1 -4.6 -4 -3 4.6 -1.2z"
+                    fill="#F7D154" stroke="#2E1C14" stroke-width="1.6"/>
+            </svg>
+          </div>
+          <div class="nm">土豆地雷</div></div>
+      </div>
+      <div class="verdict">
+        <span class="p">优点</span>：不用找素材、绝对统一、放大缩小都清晰、可以按"卡牌类别"设计视觉语言<br>
+        <span class="m">缺点</span>：抽象，不如插画有吸引力；60 张靠形状区分有难度<br>
+        <span class="n">味道</span>：<b>最重的"代码味"</b> —— 一眼看出是程序画的。适合"极简/工具感"的游戏
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ C AI 生图 / 手绘 ═══════════ -->
+  <div class="col C">
+    <header>
+      <h2>C · AI 生图（你来做）</h2>
+      <div class="sm">豆包 / 即梦 / 可灵 · 我负责统一化</div>
+    </header>
+    <div class="body">
+      <div class="cards">
+        <div class="card"><span class="cost">1</span>
+          <div class="art"><span class="emoji">🥔</span></div>
+          <div class="nm">土豆</div></div>
+        <div class="card"><span class="cost">1</span>
+          <div class="art"><span class="emoji">💣</span></div>
+          <div class="nm">土豆地雷</div></div>
+      </div>
+      <div class="verdict">
+        <span class="p">优点</span>：画质上限高得多，看起来"像正经卡牌游戏"<br>
+        <span class="m">缺点</span>："AI 味"（光影平均、细节无意义、手会坏）；60 张生成 + 挑选很花时间<br>
+        <span class="n">味道</span>：<b>"AI 味"确实有，但普通玩家大多看不出来</b> —— 只有见过大量 AI 图的人敏感<br>
+        <br>
+        <b>⚠️ 这里放的是 emoji 占位</b> —— 不是我不想放 AI 图，是我生不出来。
+        这一列的样子由**你生的图**决定。
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="plan">
+  <h2>🧩 建议的分工（现实一点）</h2>
+  <table>
+    <tr><th style="width:26%">部分</th><th style="width:14%">谁做</th><th>说明</th></tr>
+    <tr>
+      <td><b>60 张卡牌插画</b></td>
+      <td class="you">你</td>
+      <td>这是"美术味"的主战场。用豆包（免费）/即梦/可灵生成。
+          <b>不用一次做 60 张</b> —— 先做 10 张最常用的试水，我看看统一化之后什么效果</td>
+    </tr>
+    <tr>
+      <td>抠背景 / 统一色调 / 裁尺寸</td>
+      <td class="me">我</td>
+      <td>洪水填充抠图 + 强制走同一套调色板 + 输出统一尺寸 + 自动加卡框</td>
+    </tr>
+    <tr>
+      <td>UI 框架 / 布局 / 排版</td>
+      <td class="me">我</td>
+      <td>按你给的参考图做（这一步**你最该给我参考图**，比我瞎猜强十倍）</td>
+    </tr>
+    <tr>
+      <td>动效 / 粒子 / 转场</td>
+      <td class="me">我</td>
+      <td>代码在这块明显更强，而且不产生"代码味"问题</td>
+    </tr>
+    <tr>
+      <td>音效 / 音乐</td>
+      <td class="you">你</td>
+      <td>我合成不出好听的（你之前说音效你自己做）</td>
+    </tr>
+    <tr>
+      <td>字体</td>
+      <td>一起</td>
+      <td>我推荐几款免费商用中文字体，你选一个（字体对"高级感"的影响比想象大得多）</td>
+    </tr>
+  </table>
+  <div style="margin-top:16px;font-size:13px;line-height:1.95;color:#6b6478">
+    <b>关于"代码味"，我最后说一句实在话：</b><br>
+    代码能做的风格上限是<b>「干净、克制、精确」</b>（像 Linear、Teenage Engineering、无印良品那种）。
+    代码做不出<b>「有笔触、有情绪、有故事」</b>。这是能力边界，不是我不努力。<br>
+    所以：如果你想要的是后者，<b>必须有人画或 AI 画</b>；如果你能接受前者，我可以把它做到很好。
+  </div>
+</div>
+
+</body>
+</html>
