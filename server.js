@@ -1286,6 +1286,23 @@ process.on("unhandledRejection", (e) => {
 const server = http.createServer((req, res) => {
   console.log(`[请求] ${req.method} ${req.url}  来自 ${req.socket.remoteAddress}`);
   // ============================================================
+  // 📱 短地址：/1 /2 /0 —— 手机上输网址方便
+  //    /1 → /?p=1   玩家1
+  //    /2 → /?p=2   玩家2
+  //    /0 → /       观战
+  //    用途：发给朋友时短一些，手机上手输也行
+  // ============================================================
+  if (req.url === "/1" || req.url === "/2" || req.url === "/0") {
+    const p = req.url === "/1" ? "1" : (req.url === "/2" ? "2" : "");
+    res.writeHead(302, {
+      "Location": p ? "/?p=" + p : "/",
+      "Cache-Control": "no-store",
+    });
+    res.end();
+    return;
+  }
+
+  // ============================================================
   // /clearseats —— 强制踢掉所有连接、清空座位
   //   用途：测试时用（因为 socket 断开后要 60 秒才超时，
   //         期间 /reset 不会释放座位，新连接会被当成观战者）
