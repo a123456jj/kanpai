@@ -35,3 +35,6 @@ client.html
 Thumbs.db
 node_modules/
 npm-debug.log*
+
+# Python 临时目录 + 本地 ffmpeg 二进制（83MB，不进仓库）
+_pytmp/
