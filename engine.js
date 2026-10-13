@@ -304,9 +304,34 @@ function startTurn(g) {
 }
 
 function resolveTurnStart(g, p, opp) {
+  const pIdx = g.players.indexOf(p);
+  // 状态跳伤的小工具：扣血 + 记一个"通用打击"演出事件
+  //   ⚠️ 以前状态跳伤**完全不产生事件** → 玩家只看到血少了，没有任何反馈
+  //      现在给它一个中性的"状态伤害"事件（客户端播通用掉血效果，不套用任何牌的动画）
+  function statusHit(amount, reason) {
+    const before = p.hp;
+    loseHp(g, p, amount, reason);
+    const real = floor05(before - p.hp);
+    if (real > 0 && g.phase === "playing") {
+      fxPush(g, {
+        kind: "damage",
+        seq: g.lastPlay ? g.lastPlay.seq : 0,
+        card: "状态伤害",
+        statusName: reason,
+        attacker: 1 - pIdx,
+        defender: pIdx,
+        amount: real,
+        reason: reason,
+        hpAfter: p.hp,
+        hpBefore: before,
+        statusTick: true,
+      });
+    }
+  }
+
   // 中毒：每层 1 点
   const poison = statusStacks(p, "中毒");
-  if (poison > 0) loseHp(g, p, poison, "中毒");
+  if (poison > 0) statusHit(poison, "中毒");
   if (g.phase === "ended") return;
 
   // 焚烧：不丢 1 张牌就扣 2 血
@@ -411,9 +436,32 @@ function dealAttackDamage(g, attacker, defender, amount, reason, noWindow = fals
   return dmg;
 }
 
+// 给"伤害事件"算一个正确的 card 名（客户端拿它决定播什么动画）
+//   ⚠️ 背景：以前一律用 g.lastPlay.card，但状态跳伤（中毒/焚烧/饥荒/末日/
+//      断头台/反甲/土豆地雷…）不是任何卡牌打出来的 → 会误播上一张牌的动画
+//      （用户实测：自己打出毒鸡汤后，对面回合中毒掉血时又播了一次汤碗动画）
+//   规则：
+//     ① 如果是某张牌打出来的（reason 里含牌名，或者这一下就是刚打出的那张牌）
+//        → 用那张牌
+//     ② 否则用 reason 里能识别的"来源名"，客户端会播对应的通用演出
+//     ③ 认不出来的 → 用"普通伤害"，播通用打击动画
+function cardNameForEvent(g, reason) {
+  const r = String(reason || "");
+  // ① 刚打出的牌：reason 一般就是牌名（"一拳"）或"牌名（第 N 段）"或"牌名 + 的攻击"
+  if (g.lastPlay && g.lastPlay.card) {
+    const lc = g.lastPlay.card;
+    if (r === lc || r.indexOf(lc) === 0) return lc;
+  }
+  // ② 状态/机制类来源：直接用它自己的名字（客户端 CARD_FX 里有这些键就能播专属演出）
+  const KNOWN = ["中毒", "焚烧", "饥荒", "流血", "末日（未出牌）", "末日", "断头台",
+    "反甲", "土豆地雷", "定时炸弹", "盾反", "自伤", "诅咒"];
+  for (const k of KNOWN) if (r.indexOf(k) >= 0) return k;
+  // ③ 认不出来 → 通用
+  return "普通伤害";
+}
+
 // 实际扣血（已经算完伤害，且防守方选择不挡）
-function applyDamage(g, attacker, defender, dmg, reason) {
-  // 护盾（镇定剂）：本回合有效，按数值吸收
+function applyDamage(g, attacker, defender, dmg, reason) {  // 护盾（镇定剂）：本回合有效，按数值吸收
   if (defender.shieldThisTurn > 0) {
     const absorb = Math.min(defender.shieldThisTurn, dmg);
     defender.shieldThisTurn = floor05(defender.shieldThisTurn - absorb);
@@ -423,10 +471,15 @@ function applyDamage(g, attacker, defender, dmg, reason) {
   if (dmg > 0) {
     loseHp(g, defender, dmg, reason);
     // 🎬 真扣血 → 记一个演出事件（客户端据此播动画）
+    //   ⚠️ card 只在"这一下确实是某张牌打出来的"时才用 lastPlay.card。
+    //      状态跳伤（中毒/焚烧/饥荒/末日/断头台/反甲/地雷…）不是任何卡牌打的，
+    //      如果沿用 lastPlay.card，客户端会**再播一次那张牌的动画**
+    //      （用户报过：中毒掉血时播了毒鸡汤的汤碗动画）
+    const realCard = cardNameForEvent(g, reason);
     fxPush(g, {
       kind: "damage",
       seq: g.lastPlay ? g.lastPlay.seq : 0,
-      card: g.lastPlay ? g.lastPlay.card : reason,
+      card: realCard,
       attacker: g.players.indexOf(attacker),
       defender: g.players.indexOf(defender),
       amount: dmg,

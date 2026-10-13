@@ -93,6 +93,13 @@ function fxBombWarnIfNeeded(pd, iAm) {
 }
 
 // 处理演出事件列表
+//   ⚠️ DAMAGE_CARDS：这些牌"打完伤害还会挂状态" →
+//      它们的 status 事件不能再播一次动画（否则同一张牌播两遍）
+//      （用户实测：毒鸡汤的汤碗动画播了两次）
+const DAMAGE_CARDS = {
+  "毒鸡汤": 1, "硫酸": 1, "焚烧": 1, "腐肉": 1,
+  "毒飞刀": 1, "血刃": 1, "苦无": 1, "狙击枪": 1,
+};
 function fxProcessEvents(events, myIdx) {
   // 🔍 诊断：把"收到几个事件、要不要播"显示到调试面板
   if (!Array.isArray(events) || !events.length) {
@@ -127,6 +134,20 @@ function fxProcessEvents(events, myIdx) {
           const p = fxPosOf(e.defender, myIdx);
           if (typeof FX !== "undefined" && FX.mineBlast) FX.mineBlast(p.x, p.y);
           dbg("🥔 土豆地雷踩爆：玩家" + (e.defender + 1) + " 吃 " + e.amount + " 点");
+        } else if (e.statusTick || e.card === "状态伤害") {
+          // 🩸 状态跳伤（中毒/焚烧/饥荒/末日…）：**不套用任何牌的动画**
+          //    只给一个中性的掉血反馈（绿色小数字 + 一圈光环）
+          //    ⚠️ 以前这类伤害要么没反馈、要么误播上一张牌的动画
+          //       （用户实测：打出毒鸡汤后，对面回合中毒掉血时又播了汤碗动画）
+          const p = fxPosOf(e.defender, myIdx);
+          if (typeof FX !== "undefined") {
+            if (FX.bigText) {
+              FX.bigText(p.x, p.y - 18, "-" + e.amount,
+                { size: 40, color: "#7ad07a", glow: "#3aa83a", life: 900 });
+            }
+            if (FX.ring) FX.ring(p.x, p.y, "rgba(120,208,122,.85)", 8);
+          }
+          dbg("状态跳伤：" + (e.statusName || e.reason || "") + " → 玩家" + (e.defender + 1) + " 扣 " + e.amount);
         } else {
           // 🎯 真打中 → 播这张牌的完整演出
           //   召唤类例外：召唤演出由 summon 事件负责（单位攻击的伤害不重复播一遍召唤动画）
@@ -142,8 +163,14 @@ function fxProcessEvents(events, myIdx) {
         // 💣 定时炸弹：不用一次性动画了 —— 炸弹徽章由 fxSyncBomb 常驻显示（见 render）
         if (e.card === "定时炸弹") {
           dbg("💣 定时炸弹事件：" + (e.bombChoice || "") + " 第" + (e.bombCount || 1) + "轮 → 徽章会常驻在面板上");
+        } else if (DAMAGE_CARDS[e.card]) {
+          // ⚠️ 有伤害成分的牌（毒鸡汤/硫酸/焚烧…）：
+          //    它们的动画已经在 damage 事件里播过了，
+          //    这里再播一次 = 同一张牌播两遍（用户实测：汤碗动画播两次）
+          //    → 挂状态这一步只记日志，不重播动画
+          dbg("状态生效（动画已在伤害那步播过）：" + e.card + " → " + e.status);
         } else {
-          // 🌀 状态生效（黑洞/毒/焚烧/末日…）→ 播这张牌的演出
+          // 🌀 纯状态牌（黑洞/断头台/信/红绿灯/窥视…）→ 播这张牌的演出
           //    （如果这一下被格挡了，服务器不会发这个事件 → 就不播）
           const who = (e.target !== undefined) ? e.target : (e.player !== undefined ? e.player : myIdx);
           fxPlayCardAt(e.card, who, myIdx, 1);
