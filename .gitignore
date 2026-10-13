@@ -38,3 +38,16 @@ npm-debug.log*
 
 # Python 临时目录 + 本地 ffmpeg 二进制（83MB，不进仓库）
 _pytmp/
+__pycache__/
+*.pyc
+
+# 我调试用的临时脚本（下划线开头的都不进仓库）
+_*.js
+_*.py
+_net_probe.txt
+
+# 大图（本地演示用，云上不需要，省得推送慢）
+images/night.png
+images/night_anim.png
+images/night_anim.gif
+images/_pixeltest/
