@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>☕ 咖啡厅少女 · 动画</title>
+<style>
+/* ══════════════════════════════════════════════════════════
+   ☕ 咖啡厅少女 —— 用一张 PNG 做的动画场景
+     层次（从后到前）：
+       ① 背景渐变（缓慢流动）
+       ② 背景光斑（视差漂浮）
+       ③ 落地阴影（跟着立绘一起呼吸）
+       ④ 立绘卡（浮动 + 倾斜 + 柔光描边）
+       ⑤ 光晕 / 爱心 / 蒸汽 / 星星（全部 CSS 或 canvas 现画）
+       ⑥ 前景散景光斑
+     交互：鼠标移动 → 视差倾斜；点击 → 撒花
+   ══════════════════════════════════════════════════════════ */
+:root{
+  --pink:#ffb7d5;
+  --pink-deep:#ff7aa8;
+  --cream:#fff6ee;
+  --brown:#7a5540;
+  --gold:#ffd98a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden}
+body{
+  background:#1a1016;
+  font-family:"Comic Sans MS","Yuanti SC","Microsoft YaHei",system-ui,sans-serif;
+  display:flex;align-items:center;justify-content:center;
+  cursor:crosshair;
+}
+
+/* ────────── ① 背景渐变（缓慢流动）────────── */
+#bg{
+  position:fixed;inset:0;z-index:0;
+  background:
+    radial-gradient(circle at 30% 20%, #ffe3ee 0%, transparent 55%),
+    radial-gradient(circle at 75% 75%, #ffe9d6 0%, transparent 55%),
+    linear-gradient(135deg, #fff2f7 0%, #ffdfe9 35%, #ffe8d8 70%, #fff5ec 100%);
+  background-size:200% 200%, 200% 200%, 100% 100%;
+  animation:bgDrift 24s ease-in-out infinite alternate;
+}
+@keyframes bgDrift{
+  0%   { background-position:0% 0%,   100% 100%, 0 0; }
+  100% { background-position:60% 40%, 40% 20%,  0 0; }
+}
+
+/* ────────── ② 背景光斑（视差漂浮）────────── */
+#bokeh{position:fixed;inset:0;z-index:1;pointer-events:none}
+.bo{
+  position:absolute;border-radius:50%;
+  background:radial-gradient(circle, rgba(255,255,255,.95) 0%, rgba(255,214,232,.55) 45%, rgba(255,255,255,0) 72%);
+  animation:boFloat linear infinite;
+  will-change:transform,opacity;
+}
+@keyframes boFloat{
+  0%   { transform:translate3d(0,20px,0) scale(.85); opacity:0; }
+  15%  { opacity:.85; }
+  85%  { opacity:.7; }
+  100% { transform:translate3d(30px,-120px,0) scale(1.15); opacity:0; }
+}
+
+/* ────────── 舞台 ────────── */
+#stage{
+  position:relative;z-index:5;
+  display:flex;flex-direction:column;align-items:center;gap:18px;
+  transform-style:preserve-3d;
+  perspective:900px;
+}
+
+/* ────────── ③ 落地阴影 ────────── */
+#shadow{
+  position:absolute;bottom:-6px;left:50%;
+  width:210px;height:34px;margin-left:-105px;
+  background:radial-gradient(ellipse, rgba(140,90,110,.42) 0%, rgba(140,90,110,.18) 45%, rgba(140,90,110,0) 75%);
+  filter:blur(4px);
+  animation:shadowBreath 3.6s ease-in-out infinite;
+}
+@keyframes shadowBreath{
+  0%,100%{ transform:scale(1);   opacity:.85; }
+  50%    { transform:scale(.86); opacity:.55; }
+}
+
+/* ────────── ④ 立绘卡 ────────── */
+#cardWrap{
+  position:relative;
+  transform-style:preserve-3d;
+  transition:transform .18s ease-out;
+}
+#card{
+  position:relative;
+  width:min(62vmin,380px);height:min(62vmin,380px);
+  border-radius:34px;
+  overflow:hidden;
+  background:#fff;
+  box-shadow:
+    0 18px 44px rgba(150,90,120,.28),
+    0 4px 0 rgba(255,255,255,.9) inset,
+    0 0 0 6px rgba(255,255,255,.75),
+    0 0 0 9px rgba(255,183,213,.55),
+    0 0 40px rgba(255,150,190,.35);
+  animation:cardFloat 3.6s ease-in-out infinite;
+  will-change:transform;
+}
+@keyframes cardFloat{
+  0%,100%{ transform:translateY(0)     rotate(-1.1deg); }
+  50%    { transform:translateY(-16px) rotate(1.1deg); }
+}
+#chara{
+  width:100%;height:100%;object-fit:cover;display:block;
+  animation:charaBreath 3.6s ease-in-out infinite;
+  will-change:transform;
+}
+/* 立绘本身的"呼吸"（轻微缩放，和卡片浮动错开相位避免机械感） */
+@keyframes charaBreath{
+  0%,100%{ transform:scale(1)      translateY(0); }
+  50%    { transform:scale(1.035)  translateY(-2px); }
+}
+/* 卡面柔光 + 顶部高光 */
+#card::after{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:
+    linear-gradient(160deg, rgba(255,255,255,.55) 0%, rgba(255,255,255,0) 38%),
+    radial-gradient(circle at 20% 88%, rgba(255,214,232,.35), transparent 55%);
+  mix-blend-mode:screen;
+  animation:sheen 6s ease-in-out infinite;
+}
+@keyframes sheen{
+  0%,100%{ opacity:.65; }
+  50%    { opacity:.95; }
+}
+
+/* 脸颊光晕（贴在卡上） */
+.blush{
+  position:absolute;width:64px;height:38px;border-radius:50%;
+  background:radial-gradient(circle, rgba(255,138,180,.55) 0%, rgba(255,138,180,0) 70%);
+  filter:blur(6px);pointer-events:none;
+  animation:blushGlow 2.8s ease-in-out infinite;
+}
+@keyframes blushGlow{
+  0%,100%{ opacity:.45; transform:scale(1); }
+  50%    { opacity:.95; transform:scale(1.18); }
+}
+
+/* ────────── ⑤ 特效层 ────────── */
+#fx{position:absolute;inset:0;pointer-events:none;overflow:visible}
+#fxc{position:absolute;inset:-40%;width:180%;height:180%;pointer-events:none}
+
+/* 咖啡蒸汽 */
+.steam{
+  position:absolute;width:16px;height:16px;border-radius:50%;
+  background:radial-gradient(circle, rgba(255,255,255,.85) 0%, rgba(255,255,255,0) 70%);
+  filter:blur(3px);
+  animation:steamRise linear infinite;
+  will-change:transform,opacity;
+}
+@keyframes steamRise{
+  0%   { transform:translate(0,0) scale(.5);        opacity:0; }
+  18%  { opacity:.75; }
+  60%  { transform:translate(-10px,-46px) scale(1.5); opacity:.55; }
+  100% { transform:translate(8px,-96px) scale(2.2);   opacity:0; }
+}
+
+/* 飘爱心 */
+.heart{
+  position:absolute;font-size:18px;line-height:1;
+  animation:heartUp linear infinite;
+  will-change:transform,opacity;
+  filter:drop-shadow(0 2px 4px rgba(255,120,170,.45));
+}
+@keyframes heartUp{
+  0%   { transform:translate(0,0) scale(.4) rotate(0deg);      opacity:0; }
+  12%  { opacity:1; }
+  50%  { transform:translate(-16px,-60px) scale(1.15) rotate(-14deg); }
+  100% { transform:translate(14px,-130px) scale(.7) rotate(12deg); opacity:0; }
+}
+
+/* 闪光（四角星） */
+.spark{
+  position:absolute;font-size:14px;color:#fff;
+  text-shadow:0 0 8px #ffd0e4, 0 0 16px #ff9ec4;
+  animation:sparkPop ease-in-out infinite;
+  will-change:transform,opacity;
+}
+@keyframes sparkPop{
+  0%,100%{ transform:scale(0) rotate(0deg);   opacity:0; }
+  40%    { transform:scale(1.2) rotate(90deg); opacity:1; }
+  70%    { transform:scale(.9) rotate(150deg); opacity:.7; }
+}
+
+/* 点击撒花 */
+.confetti{
+  position:fixed;pointer-events:none;z-index:60;
+  font-size:20px;line-height:1;
+  animation:confettiFly ease-out forwards;
+}
+@keyframes confettiFly{
+  0%  { transform:translate(0,0) scale(.4) rotate(0deg);   opacity:1; }
+  100%{ transform:translate(var(--dx),var(--dy)) scale(1.1) rotate(var(--rot)); opacity:0; }
+}
+
+/* ────────── ⑥ 前景散景 ────────── */
+#front{position:fixed;inset:0;z-index:40;pointer-events:none}
+.fo{
+  position:absolute;border-radius:50%;
+  background:radial-gradient(circle, rgba(255,255,255,.75) 0%, rgba(255,255,255,0) 70%);
+  filter:blur(2px);
+  animation:foDrift linear infinite;
+}
+@keyframes foDrift{
+  0%   { transform:translate3d(0,0,0) scale(.9); opacity:0; }
+  20%  { opacity:.8; }
+  100% { transform:translate3d(-40px,-70px,0) scale(1.3); opacity:0; }
+}
+
+/* ────────── 文字 ────────── */
+#title{
+  font-size:clamp(18px,3.4vmin,26px);font-weight:900;letter-spacing:3px;
+  color:#8a4a62;
+  text-shadow:0 2px 0 #fff, 0 4px 12px rgba(255,150,190,.5);
+  animation:titleBob 3.6s ease-in-out infinite;
+}
+@keyframes titleBob{
+  0%,100%{ transform:translateY(0) rotate(-1deg); }
+  50%    { transform:translateY(-5px) rotate(1deg); }
+}
+#hint{
+  font-size:clamp(11px,1.7vmin,13px);color:#a8708a;letter-spacing:1px;
+  opacity:.85;animation:hintPulse 2.4s ease-in-out infinite;
+}
+@keyframes hintPulse{ 0%,100%{opacity:.55} 50%{opacity:1} }
+
+/* ────────── 星空 / 咖啡两种模式（按钮）────────── */
+#modes{
+  position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+  z-index:70;display:flex;gap:8px;
+}
+#modes button{
+  font-family:inherit;font-size:12.5px;font-weight:bold;
+  padding:7px 15px;border-radius:20px;cursor:pointer;
+  border:2px solid #d98aa8;background:rgba(255,255,255,.82);color:#8a4a62;
+  box-shadow:0 3px 0 rgba(217,138,168,.6);
+  transition:transform .1s, box-shadow .1s, background .2s;
+}
+#modes button:hover{ transform:translateY(-2px); box-shadow:0 5px 0 rgba(217,138,168,.6); }
+#modes button:active{ transform:translateY(2px); box-shadow:0 1px 0 rgba(217,138,168,.6); }
+#modes button.on{ background:#ffd9e8; }
+
+@media (max-width:520px){
+  #card{ width:min(76vmin,320px); height:min(76vmin,320px); border-radius:26px; }
+  #shadow{ width:170px;margin-left:-85px; }
+}
+</style>
+</head>
+<body>
+
+<div id="bg"></div>
+<div id="bokeh"></div>
+<div id="front"></div>
+
+<div id="stage">
+  <div id="cardWrap">
+    <div id="shadow"></div>
+    <div id="card">
+      <img id="chara" src="images/chara.png" alt="咖啡厅少女">
+      <div id="fx"></div>
+      <div class="blush" style="left:22%;top:46%;"></div>
+      <div class="blush" style="left:58%;top:45%;"></div>
+    </div>
+  </div>
+  <div id="title">☕ 咖啡厅少女</div>
+  <div id="hint">移动鼠标 → 会跟着轻轻晃　·　点一下 → 撒花</div>
+</div>
+
+<div id="modes">
+  <button data-m="cozy" class="on">☕ 暖阳模式</button>
+  <button data-m="night">🌙 夜灯模式</button>
+  <button data-m="speed">💨 加速模式</button>
+</div>
+
+<script>
+// ============================================================
+//  ☕ 咖啡厅少女 —— 动画逻辑
+//    ① 背景光斑（视差漂浮）
+//    ② 咖啡蒸汽 / 爱心 / 闪光（在卡片坐标系里随机生成）
+//    ③ 鼠标视差倾斜
+//    ④ 点击撒花
+// ============================================================
+(function () {
+  const $ = (s) => document.querySelector(s);
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  // ────────── ① 背景光斑 ──────────
+  const ARTS = ["✦", "★", "♡", "✧", "❀"];
+  function spawnBokeh() {
+    const n = window.innerWidth < 600 ? 10 : 18;
+    const box = $("#bokeh");
+    for (let i = 0; i < n; i++) {
+      const d = document.createElement("div");
+      d.className = "bo";
+      const s = rnd(18, 70);
+      d.style.width = d.style.height = s + "px";
+      d.style.left = rnd(0, 100) + "%";
+      d.style.top = rnd(20, 100) + "%";
+      d.style.animationDuration = rnd(9, 20) + "s";
+      d.style.animationDelay = -rnd(0, 20) + "s";
+      box.appendChild(d);
+    }
+  }
+
+  // ────────── ⑥ 前景散景 ──────────
+  function spawnFront() {
+    const n = window.innerWidth < 600 ? 6 : 12;
+    const box = $("#front");
+    for (let i = 0; i < n; i++) {
+      const d = document.createElement("div");
+      d.className = "fo";
+      const s = rnd(8, 26);
+      d.style.width = d.style.height = s + "px";
+      d.style.left = rnd(0, 100) + "%";
+      d.style.top = rnd(30, 100) + "%";
+      d.style.animationDuration = rnd(11, 22) + "s";
+      d.style.animationDelay = -rnd(0, 22) + "s";
+      box.appendChild(d);
+    }
+  }
+
+  // ────────── ② 卡片内的特效 ──────────
+  //   蒸汽：咖啡杯大概在图的右下位置（原图 240×240 里杯子在 ~(58%,72%)）
+  const STEAM_X = 58, STEAM_Y = 68;   // 百分比
+  const HEART_SPOTS = [[24, 30], [68, 26], [40, 18], [76, 44]];
+  const SPARK_SPOTS = [[30, 66], [44, 74], [62, 82], [78, 70], [52, 58]];
+
+  function makeSteam() {
+    const box = $("#fx");
+    function one() {
+      const d = document.createElement("div");
+      d.className = "steam";
+      d.style.left = (STEAM_X + rnd(-4, 4)) + "%";
+      d.style.top = STEAM_Y + "%";
+      const dur = rnd(2.2, 3.6);
+      d.style.animationDuration = dur + "s";
+      d.style.width = d.style.height = rnd(12, 22) + "px";
+      box.appendChild(d);
+      setTimeout(() => d.remove(), dur * 1000 + 200);
+    }
+    for (let i = 0; i < 5; i++) setTimeout(one, i * 300);
+    const timer = setInterval(one, 520);
+    return timer;
+  }
+
+  function makeHearts() {
+    const box = $("#fx");
+    function one() {
+      const d = document.createElement("div");
+      d.className = "heart";
+      d.textContent = ["♡", "❤", "♥"][Math.floor(rnd(0, 3))];
+      const s = HEART_SPOTS[Math.floor(rnd(0, HEART_SPOTS.length))];
+      d.style.left = (s[0] + rnd(-6, 6)) + "%";
+      d.style.top = (s[1] + rnd(-5, 5)) + "%";
+      d.style.fontSize = rnd(13, 22) + "px";
+      const dur = rnd(2.6, 4.2);
+      d.style.animationDuration = dur + "s";
+      box.appendChild(d);
+      setTimeout(() => d.remove(), dur * 1000 + 200);
+    }
+    for (let i = 0; i < 3; i++) setTimeout(one, i * 700);
+    const timer = setInterval(one, 900);
+    return timer;
+  }
+
+  function makeSparks() {
+    const box = $("#fx");
+    SPARK_SPOTS.forEach((s, i) => {
+      const d = document.createElement("div");
+      d.className = "spark";
+      d.textContent = ARTS[i % ARTS.length];
+      d.style.left = s[0] + "%";
+      d.style.top = s[1] + "%";
+      d.style.fontSize = rnd(11, 18) + "px";
+      d.style.animationDuration = rnd(1.8, 3.2) + "s";
+      d.style.animationDelay = -rnd(0, 2) + "s";
+      box.appendChild(d);
+    });
+  }
+
+  // ────────── ③ 鼠标视差倾斜 ──────────
+  const wrap = $("#cardWrap");
+  let tx = 0, ty = 0, cx = 0, cy = 0;
+  window.addEventListener("mousemove", (e) => {
+    const nx = (e.clientX / window.innerWidth - .5) * 2;
+    const ny = (e.clientY / window.innerHeight - .5) * 2;
+    tx = nx * 9;    // 左右最多倾斜 9 度
+    ty = -ny * 7;   // 上下最多 7 度
+  });
+  window.addEventListener("mouseleave", () => { tx = 0; ty = 0; });
+  function tiltLoop() {
+    cx += (tx - cx) * .08;     // 缓动
+    cy += (ty - cy) * .08;
+    wrap.style.transform = "rotateY(" + cx.toFixed(2) + "deg) rotateX(" + cy.toFixed(2) + "deg)";
+    requestAnimationFrame(tiltLoop);
+  }
+  tiltLoop();
+
+  // ────────── ④ 点击撒花 ──────────
+  const CONFETTI = ["🌸", "💗", "✨", "🍓", "☕", "💕", "⭐", "🎀"];
+  function burst(x, y) {
+    for (let i = 0; i < 16; i++) {
+      const d = document.createElement("div");
+      d.className = "confetti";
+      d.textContent = CONFETTI[Math.floor(rnd(0, CONFETTI.length))];
+      d.style.left = x + "px";
+      d.style.top = y + "px";
+      const ang = rnd(0, Math.PI * 2), dist = rnd(70, 210);
+      d.style.setProperty("--dx", (Math.cos(ang) * dist).toFixed(0) + "px");
+      d.style.setProperty("--dy", (Math.sin(ang) * dist - 40).toFixed(0) + "px");
+      d.style.setProperty("--rot", rnd(-360, 360).toFixed(0) + "deg");
+      d.style.animationDuration = rnd(.9, 1.5) + "s";
+      d.style.fontSize = rnd(14, 28) + "px";
+      document.body.appendChild(d);
+      setTimeout(() => d.remove(), 1700);
+    }
+  }
+  window.addEventListener("click", (e) => burst(e.clientX, e.clientY));
+
+  // ────────── 模式切换 ──────────
+  let timers = [];
+  const MODES = {
+    cozy: {
+      bg: "radial-gradient(circle at 30% 20%, #ffe3ee 0%, transparent 55%)," +
+          "radial-gradient(circle at 75% 75%, #ffe9d6 0%, transparent 55%)," +
+          "linear-gradient(135deg, #fff2f7 0%, #ffdfe9 35%, #ffe8d8 70%, #fff5ec 100%)",
+      speed: 1,
+    },
+    night: {
+      bg: "radial-gradient(circle at 30% 20%, #4a3550 0%, transparent 55%)," +
+          "radial-gradient(circle at 78% 78%, #5a4038 0%, transparent 55%)," +
+          "linear-gradient(135deg, #2a1f33 0%, #3a2436 40%, #402c30 70%, #241a26 100%)",
+      speed: 1.15,
+    },
+    speed: {
+      bg: "radial-gradient(circle at 25% 25%, #ffe8f2 0%, transparent 55%)," +
+          "radial-gradient(circle at 80% 70%, #e8f4ff 0%, transparent 55%)," +
+          "linear-gradient(135deg, #fdf0ff 0%, #ffd9e8 30%, #d9ecff 70%, #fff3e8 100%)",
+      speed: 2.4,
+    },
+  };
+  function applyMode(m) {
+    const cfg = MODES[m] || MODES.cozy;
+    $("#bg").style.background = cfg.bg;
+    // 调速：所有粒子动画的 duration 除以 speed
+    const sp = cfg.speed;
+    document.querySelectorAll(".bo,.fo,.steam,.heart,.spark").forEach((el) => {
+      const d = parseFloat(el.style.animationDuration) || 3;
+      el.style.animationDuration = (d / sp) + "s";
+    });
+    // 重新起特效（让新速度立刻生效）
+    restartFx(sp);
+    document.querySelectorAll("#modes button").forEach((b) => {
+      b.classList.toggle("on", b.dataset.m === m);
+    });
+  }
+  let fxSpeed = 1;
+  function restartFx(sp) {
+    fxSpeed = sp;
+    timers.forEach(clearInterval);
+    timers = [];
+    $("#fx").innerHTML = "";
+    timers.push(makeSteam());
+    timers.push(makeHearts());
+    makeSparks();
+    // 卡片浮动速度也跟着变
+    const card = $("#card"), img = $("#chara"), sh = $("#shadow");
+    card.style.animationDuration = (3.6 / sp) + "s";
+    img.style.animationDuration = (3.6 / sp) + "s";
+    sh.style.animationDuration = (3.6 / sp) + "s";
+  }
+
+  // ────────── 启动 ──────────
+  spawnBokeh();
+  spawnFront();
+  makeSparks();
+  timers.push(makeSteam());
+  timers.push(makeHearts());
+
+  document.querySelectorAll("#modes button").forEach((b) => {
+    b.onclick = (e) => {
+      e.stopPropagation();
+      applyMode(b.dataset.m);
+    };
+  });
+})();
+</script>
+</body>
+</html>

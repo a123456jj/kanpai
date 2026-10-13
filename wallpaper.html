@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>☕ 动态壁纸 · 咖啡厅少女</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   ☕ 动态壁纸 —— 用一张 240×240 的图，堆满所有代码能做的效果
+     层级（后 → 前）：
+       0  环境层：同一张图放大 + 重度模糊 + 饱和度提升（当"背景照"）
+       1  色调层：四种色调轮流混合（暖橙/冷蓝/樱粉/鎏金）
+       2  体积光：旋转光束扫过
+       3  主立绘：切成 4 条，各条视差 + 3D 倾斜（SVG 湍流扭曲 + 色散）
+       4  光效层：镜头光晕、冲击闪光
+       5  粒子层：canvas（光斑/星星/花瓣/蒸汽）
+       6  前景层：模糊散景（景深）
+       7  UI：时钟、提示
+     ══════════════════════════════════════════════════════════════════════ */
+:root{
+  --warm:#ffb98a;
+  --cool:#8ab6ff;
+  --sakura:#ff9ec4;
+  --gold:#ffd98a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#0a0710}
+body{
+  font-family:"Comic Sans MS","Yuanti SC","Microsoft YaHei",system-ui,sans-serif;
+  cursor:crosshair;
+}
+
+/* ────────── 0 环境层（同一张图当背景照）────────── */
+#ambient{
+  position:fixed;inset:-8%;z-index:0;
+  background:url("images/chara.png") center/cover no-repeat;
+  filter:blur(34px) saturate(1.5) brightness(.72);
+  transform:scale(1.25);
+  animation:ambientDrift 34s ease-in-out infinite alternate;
+  will-change:transform;
+}
+@keyframes ambientDrift{
+  0%  { transform:scale(1.25) translate(0,0); }
+  100%{ transform:scale(1.4)  translate(-2%,-3%); }
+}
+
+/* ────────── 1 色调层 ────────── */
+#tint{
+  position:fixed;inset:0;z-index:1;pointer-events:none;
+  mix-blend-mode:soft-light;
+  animation:tintCycle 40s linear infinite;
+}
+@keyframes tintCycle{
+  0%   { background:var(--warm);   opacity:.42; }
+  25%  { background:var(--sakura); opacity:.34; }
+  50%  { background:var(--cool);   opacity:.40; }
+  75%  { background:var(--gold);   opacity:.36; }
+  100% { background:var(--warm);   opacity:.42; }
+}
+/* 暗角 + 顶部压暗（让中间的立绘更突出） */
+#vignette{
+  position:fixed;inset:0;z-index:2;pointer-events:none;
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 48%, transparent 0%, rgba(10,6,16,.55) 72%, rgba(6,4,10,.92) 100%),
+    linear-gradient(180deg, rgba(10,6,16,.5) 0%, transparent 22%, transparent 76%, rgba(6,4,10,.7) 100%);
+}
+
+/* ────────── 2 体积光 ────────── */
+#rays{
+  position:fixed;inset:-30%;z-index:3;pointer-events:none;
+  background:repeating-conic-gradient(from 0deg at 50% 42%,
+    rgba(255,226,180,.00) 0deg 6deg,
+    rgba(255,224,170,.13) 6deg 11deg,
+    rgba(255,226,180,.00) 11deg 22deg);
+  filter:blur(22px);
+  mix-blend-mode:screen;
+  animation:raysSpin 48s linear infinite;
+  opacity:.6;
+}
+@keyframes raysSpin{ to{ transform:rotate(360deg); } }
+
+/* ────────── 3 主立绘（4 层切片）────────── */
+#scene{
+  position:fixed;inset:0;z-index:6;
+  display:flex;align-items:center;justify-content:center;
+  perspective:1100px;
+  pointer-events:none;
+}
+#stack{
+  position:relative;
+  width:min(78vmin,560px);height:min(78vmin,560px);
+  transform-style:preserve-3d;
+  will-change:transform;
+}
+.slice{
+  position:absolute;top:0;height:100%;
+  background-image:url("images/chara.png");
+  background-size:min(78vmin,560px) min(78vmin,560px);
+  background-repeat:no-repeat;
+  will-change:transform;
+  border-radius:2px;
+  /* 每条自己的一点点缩放，互相错开相位做出"呼吸" */
+  animation:sliceBreath 4.6s ease-in-out infinite;
+}
+@keyframes sliceBreath{
+  0%,100%{ filter:brightness(1)    saturate(1.06); }
+  50%    { filter:brightness(1.06) saturate(1.16); }
+}
+/* 立绘外发光（在切片容器上，不参与切割） */
+#stack::after{
+  content:"";position:absolute;inset:-6%;border-radius:8%;
+  background:radial-gradient(ellipse at 50% 45%, rgba(255,190,220,.28), rgba(255,190,220,0) 68%);
+  filter:blur(20px);pointer-events:none;mix-blend-mode:screen;
+  animation:haloPulse 4.6s ease-in-out infinite;
+}
+@keyframes haloPulse{ 0%,100%{opacity:.65} 50%{opacity:1} }
+
+/* ────────── 4 色散（RGB 分离）────────── */
+#chromaR,#chromaC{
+  position:absolute;inset:0;pointer-events:none;mix-blend-mode:screen;
+  opacity:.36;
+}
+#chromaR{
+  background:url("images/chara.png") center/contain no-repeat;
+  filter:url(#f-red) brightness(1.1);
+}
+#chromaC{
+  background:url("images/chara.png") center/contain no-repeat;
+  filter:url(#f-cyan) brightness(1.1);
+}
+
+/* ────────── 5 粒子层 ────────── */
+#pc{position:fixed;inset:0;z-index:8;pointer-events:none}
+/* ────────── 6 前景散景 ────────── */
+#front{position:fixed;inset:0;z-index:9;pointer-events:none}
+
+/* ────────── 冲击闪光 ────────── */
+#flash{
+  position:fixed;inset:0;z-index:20;pointer-events:none;
+  background:radial-gradient(circle at 50% 45%, rgba(255,255,255,.95), rgba(255,235,245,.5) 40%, transparent 70%);
+  opacity:0;
+}
+#flash.go{ animation:flashPop .85s ease-out; }
+@keyframes flashPop{
+  0%  { opacity:0; transform:scale(.6); }
+  8%  { opacity:.95; transform:scale(1.05); }
+  100%{ opacity:0; transform:scale(1.25); }
+}
+
+/* ────────── UI ────────── */
+#clock{
+  position:fixed;top:26px;left:50%;transform:translateX(-50%);
+  z-index:30;text-align:center;pointer-events:none;
+  color:#fff;text-shadow:0 2px 6px rgba(0,0,0,.6), 0 0 24px rgba(255,180,220,.55);
+}
+#clock .t{ font-size:clamp(28px,6vmin,54px); font-weight:900; letter-spacing:4px; line-height:1; }
+#clock .d{ font-size:clamp(11px,1.8vmin,14px); letter-spacing:3px; opacity:.82; margin-top:6px; }
+
+#brand{
+  position:fixed;bottom:26px;left:50%;transform:translateX(-50%);
+  z-index:30;text-align:center;pointer-events:none;
+  color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.7);
+}
+#brand .a{ font-size:clamp(15px,2.6vmin,22px); font-weight:900; letter-spacing:7px; }
+#brand .b{ font-size:clamp(10px,1.5vmin,12px); letter-spacing:4px; opacity:.62; margin-top:5px; }
+
+#hud{
+  position:fixed;top:14px;left:14px;z-index:30;
+  font-size:11.5px;line-height:1.7;color:rgba(255,255,255,.72);
+  text-shadow:0 1px 3px rgba(0,0,0,.8);
+  background:rgba(10,6,16,.42);border:1px solid rgba(255,255,255,.14);
+  border-radius:10px;padding:8px 12px;
+  backdrop-filter:blur(6px);
+}
+#hud b{ color:#ffd0e4; }
+
+#modes{
+  position:fixed;bottom:88px;left:50%;transform:translateX(-50%);
+  z-index:31;display:flex;gap:7px;flex-wrap:wrap;justify-content:center;
+  opacity:.30;transition:opacity .3s;
+}
+#modes:hover{ opacity:1; }
+#modes button{
+  font-family:inherit;font-size:12px;font-weight:bold;
+  padding:6px 13px;border-radius:18px;cursor:pointer;
+  border:1.5px solid rgba(255,255,255,.35);
+  background:rgba(20,12,22,.55);color:#fff;
+  backdrop-filter:blur(6px);
+  transition:background .2s, transform .1s;
+}
+#modes button:hover{ background:rgba(255,160,200,.35); transform:translateY(-2px); }
+#modes button.on{ background:rgba(255,160,200,.6); border-color:#ffd0e4; }
+
+@media (max-width:600px){
+  #hud{ display:none; }
+  #rays{ opacity:.4; }
+}
+</style>
+</head>
+<body>
+
+<!-- ══ SVG 滤镜：湍流扭曲 + 红青分离 ══ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- ① 水波/热浪扭曲：两层湍流合成位移 -->
+    <filter id="f-wave" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
+      <feTurbulence id="turbA" type="fractalNoise" baseFrequency="0.008 0.014" numOctaves="3" seed="7" result="n1">
+        <animate attributeName="baseFrequency" dur="26s" values="0.008 0.014;0.016 0.008;0.008 0.014" repeatCount="indefinite"/>
+      </feTurbulence>
+      <feDisplacementMap in="SourceGraphic" in2="n1" scale="6" xChannelSelector="R" yChannelSelector="G" result="d1"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="2" seed="19" result="n2">
+        <animate attributeName="seed" dur="3.5s" values="1;40;1" repeatCount="indefinite"/>
+      </feTurbulence>
+      <feDisplacementMap in="d1" in2="n2" scale="2.4" xChannelSelector="R" yChannelSelector="B" result="d2"/>
+      <!-- 轻微泛光 -->
+      <feGaussianBlur in="d2" stdDeviation="1.1" result="glow"/>
+      <feBlend in="d2" in2="glow" mode="screen"/>
+    </filter>
+    <!-- ② 红通道 / 青通道（色散用） -->
+    <filter id="f-red">
+      <feColorMatrix type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/>
+    </filter>
+    <filter id="f-cyan">
+      <feColorMatrix type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/>
+    </filter>
+  </defs>
+</svg>
+
+<div id="ambient"></div>
+<div id="tint"></div>
+<div id="vignette"></div>
+<div id="rays"></div>
+
+<!-- ══ 主立绘：4 条切片 + 色散 ══ -->
+<div id="scene">
+  <div id="stack">
+    <div id="slices"></div>
+    <div id="chromaR"></div>
+    <div id="chromaC"></div>
+  </div>
+</div>
+
+<canvas id="pc"></canvas>
+<div id="front"></div>
+<div id="flash"></div>
+
+<div id="clock"><div class="t" id="ctime">--:--</div><div class="d" id="cdate">----</div></div>
+<div id="brand">
+  <div class="a">CAFÉ NOIR</div>
+  <div class="b">咖 啡 厅 少 女 · 动 态 壁 纸</div>
+</div>
+<div id="hud">
+  帧率 <b id="hfps">--</b> FPS　·　粒子 <b id="hc">0</b><br>
+  鼠标移动 → 视差　·　点一下 → 撒花<br>
+  <b>1</b> 暖阳　<b>2</b> 深夜　<b>3</b> 樱吹雪　<b>4</b> 鎏金　<b>空格</b> 冲击
+</div>
+<div id="modes">
+  <button data-m="warm" class="on">1 暖阳</button>
+  <button data-m="night">2 深夜</button>
+  <button data-m="sakura">3 樱吹雪</button>
+  <button data-m="gold">4 鎏金</button>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════
+//  ☕ 动态壁纸引擎
+//    ① 切片视差（4 条，各自深浅不一 → 假 3D）
+//    ② 鼠标/陀螺仪 → 整体倾斜
+//    ③ 镜头巡游（自动推近拉远 + 缓慢平移）
+//    ④ Canvas 粒子（光斑 / 星星 / 花瓣 / 蒸汽 / 咖啡豆）
+//    ⑤ 前景散景
+//    ⑥ 冲击闪光
+//    ⑦ 点击撒花
+//    ⑧ 四种色调模式
+// ══════════════════════════════════════════════════════════════════════
+(function () {
+  const $ = (s) => document.querySelector(s);
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  // ────────────────────────── ① 切片 ──────────────────────────
+  const SLICES = 4;                       // 4 条
+  const DEPTH = [0.35, 1.0, 0.7, 1.35];   // 每条被鼠标推动的幅度（越大越"近"）
+  const slicesBox = $("#slices");
+  const sliceEls = [];
+  function buildSlices() {
+    slicesBox.innerHTML = "";
+    sliceEls.length = 0;
+    const size = $("#stack").getBoundingClientRect().width || 520;
+    const w = 100 / SLICES;
+    for (let i = 0; i < SLICES; i++) {
+      const d = document.createElement("div");
+      d.className = "slice";
+      // 用 clip-path 把整张图裁成第 i 条（比 background-position 更稳，不会有缝）
+      d.style.left = (i * w) + "%";
+      d.style.width = w + "%";
+      d.style.clipPath = "inset(0 " + (100 - (i + 1) * w) + "% 0 " + (i * w) + "%)";
+      d.style.backgroundSize = size + "px " + size + "px";
+      d.style.backgroundPosition = "center";
+      d.style.filter = "url(#f-wave)";
+      d.style.animationDelay = (-i * 0.8) + "s";
+      slicesBox.appendChild(d);
+      sliceEls.push({ el: d, depth: DEPTH[i % DEPTH.length], base: 0 });
+    }
+  }
+
+  // ────────────────────────── ② 鼠标倾斜 ──────────────────────────
+  let mx = 0, my = 0, smx = 0, smy = 0;
+  window.addEventListener("mousemove", (e) => {
+    mx = (e.clientX / window.innerWidth - .5) * 2;
+    my = (e.clientY / window.innerHeight - .5) * 2;
+  });
+  window.addEventListener("mouseleave", () => { mx = 0; my = 0; });
+  // 手机：用陀螺仪（不支持就忽略）
+  window.addEventListener("deviceorientation", (e) => {
+    if (e.gamma === null) return;
+    mx = clamp(e.gamma / 30, -1, 1);
+    my = clamp((e.beta - 45) / 40, -1, 1);
+  });
+
+  // ────────────────────────── ③ 镜头巡游 ──────────────────────────
+  let t0 = performance.now();
+  let camZ = 1, camTX = 0, camTY = 0;
+  let tourPhase = 0;
+
+  const stack = $("#stack");
+  function frame(now) {
+    const dt = Math.min(50, now - t0); t0 = now;
+    tourPhase += dt * 0.000045;
+
+    // 鼠标缓动
+    smx += (mx - smx) * 0.06;
+    smy += (my - smy) * 0.06;
+
+    // 自动巡游：推近拉远 + 缓慢平移
+    camZ = 1 + Math.sin(tourPhase * 1.0) * 0.075;
+    camTX = Math.sin(tourPhase * 0.63) * 26;
+    camTY = Math.cos(tourPhase * 0.47) * 18;
+
+    // 主容器：3D 倾斜 + 巡游位移
+    const tiltY = smx * 12, tiltX = -smy * 9;
+    stack.style.transform =
+      "translate3d(" + (camTX + smx * 26).toFixed(1) + "px," + (camTY + smy * 20).toFixed(1) + "px,0) " +
+      "rotateX(" + tiltX.toFixed(2) + "deg) rotateY(" + tiltY.toFixed(2) + "deg) scale(" + camZ.toFixed(4) + ")";
+
+    // 每条切片：不同深度 + 错开的呼吸
+    for (let i = 0; i < sliceEls.length; i++) {
+      const s = sliceEls[i];
+      const ph = now * 0.0009 + i * 1.7;
+      const dx = smx * 17 * s.depth + Math.sin(ph) * 2.2 * s.depth;
+      const dy = smy * 12 * s.depth + Math.cos(ph * 0.83) * 3.0 * s.depth;
+      const rot = Math.sin(ph * 0.6) * 0.5 * s.depth;
+      s.el.style.transform =
+        "translate3d(" + dx.toFixed(2) + "px," + dy.toFixed(2) + "px,0) rotate(" + rot.toFixed(2) + "deg)";
+    }
+
+    // 色散层跟着主容器走（反方向一点点）
+    const cr = $("#chromaR"), cc = $("#chromaC");
+    const off = 3.2 + Math.abs(smx) * 3.5;
+    cr.style.transform = "translateX(" + (-off).toFixed(1) + "px) translateY(" + (smy * 2).toFixed(1) + "px)";
+    cc.style.transform = "translateX(" + (off).toFixed(1) + "px) translateY(" + (-smy * 2).toFixed(1) + "px)";
+
+    drawParticles(dt);
+    requestAnimationFrame(frame);
+  }
+
+  // ────────────────────────── ④ Canvas 粒子 ──────────────────────────
+  const cv = $("#pc");
+  const cx2d = cv.getContext("2d");
+  let W = 0, H = 0, DPR = 1;
+  function resize() {
+    DPR = Math.min(2, window.devicePixelRatio || 1);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = Math.floor(W * DPR); cv.height = Math.floor(H * DPR);
+    cv.style.width = W + "px"; cv.style.height = H + "px";
+    cx2d.setTransform(DPR, 0, 0, DPR, 0, 0);
+    buildSlices();
+  }
+  window.addEventListener("resize", resize);
+
+  const P = [];
+  const KINDS = ["bokeh", "star", "petal", "steam", "bean"];
+  function spawn(init) {
+    const k = KINDS[Math.floor(rnd(0, KINDS.length))];
+    return {
+      k: k,
+      x: rnd(-40, W + 40),
+      y: init ? rnd(0, H) : (k === "steam" ? H + 20 : -40),
+      vx: rnd(-14, 14),
+      vy: k === "steam" ? rnd(-42, -20) : rnd(-30, -8),
+      r: k === "bokeh" ? rnd(18, 74) : (k === "steam" ? rnd(14, 40) : rnd(3, 9)),
+      a: rnd(.25, .85),
+      rot: rnd(0, Math.PI * 2),
+      vr: rnd(-1.2, 1.2),
+      hue: [340, 350, 30, 45, 200][Math.floor(rnd(0, 5))],
+      ph: rnd(0, Math.PI * 2),
+      life: rnd(6, 16),
+      age: 0,
+    };
+  }
+  function initParticles() {
+    P.length = 0;
+    const n = W < 700 ? 70 : 150;
+    for (let i = 0; i < n; i++) P.push(spawn(true));
+  }
+
+  function drawParticles(dt) {
+    const s = dt / 1000;
+    cx2d.clearRect(0, 0, W, H);
+    cx2d.globalCompositeOperation = "lighter";
+
+    for (let i = 0; i < P.length; i++) {
+      const p = P[i];
+      p.age += s;
+      p.x += (p.vx + Math.sin(p.ph + p.age * 1.4) * 12) * s;
+      p.y += p.vy * s;
+      p.rot += p.vr * s;
+      const fadeIn = clamp(p.age / 1.2, 0, 1);
+      const fadeOut = clamp((p.life - p.age) / 2.2, 0, 1);
+      const a = p.a * fadeIn * fadeOut;
+
+      if (p.k === "bokeh") {
+        const g = cx2d.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r);
+        g.addColorStop(0, "hsla(" + p.hue + ",100%,92%," + (a * .9) + ")");
+        g.addColorStop(.45, "hsla(" + p.hue + ",95%,80%," + (a * .32) + ")");
+        g.addColorStop(1, "hsla(" + p.hue + ",90%,75%,0)");
+        cx2d.fillStyle = g;
+        cx2d.beginPath(); cx2d.arc(p.x, p.y, p.r, 0, 6.2832); cx2d.fill();
+      } else if (p.k === "star") {
+        const r = p.r * (1 + Math.sin(p.age * 5 + p.ph) * .35);
+        const g = cx2d.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 4);
+        g.addColorStop(0, "rgba(255,255,255," + a + ")");
+        g.addColorStop(.3, "hsla(" + p.hue + ",100%,86%," + (a * .5) + ")");
+        g.addColorStop(1, "hsla(" + p.hue + ",100%,85%,0)");
+        cx2d.fillStyle = g;
+        cx2d.beginPath(); cx2d.arc(p.x, p.y, r * 4, 0, 6.2832); cx2d.fill();
+        // 十字光芒
+        cx2d.strokeStyle = "rgba(255,255,255," + (a * .85) + ")";
+        cx2d.lineWidth = 1.4;
+        cx2d.beginPath();
+        cx2d.moveTo(p.x - r * 3, p.y); cx2d.lineTo(p.x + r * 3, p.y);
+        cx2d.moveTo(p.x, p.y - r * 3); cx2d.lineTo(p.x, p.y + r * 3);
+        cx2d.stroke();
+      } else if (p.k === "petal") {
+        cx2d.save();
+        cx2d.translate(p.x, p.y); cx2d.rotate(p.rot);
+        const g = cx2d.createLinearGradient(-p.r, 0, p.r, 0);
+        g.addColorStop(0, "hsla(" + p.hue + ",100%,88%," + a + ")");
+        g.addColorStop(1, "hsla(" + p.hue + ",90%,72%," + (a * .5) + ")");
+        cx2d.fillStyle = g;
+        cx2d.beginPath();
+        cx2d.ellipse(0, 0, p.r * 1.5, p.r * .8, 0, 0, 6.2832);
+        cx2d.fill();
+        cx2d.restore();
+      } else if (p.k === "steam") {
+        const g = cx2d.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r);
+        g.addColorStop(0, "rgba(255,255,255," + (a * .34) + ")");
+        g.addColorStop(1, "rgba(255,255,255,0)");
+        cx2d.fillStyle = g;
+        cx2d.beginPath(); cx2d.arc(p.x, p.y, p.r, 0, 6.2832); cx2d.fill();
+      } else { // bean 小圆点
+        cx2d.fillStyle = "hsla(" + p.hue + ",80%,80%," + a + ")";
+        cx2d.beginPath(); cx2d.arc(p.x, p.y, p.r * .5, 0, 6.2832); cx2d.fill();
+      }
+
+      // 越界 / 到期 → 重生
+      if (p.y < -90 || p.x < -140 || p.x > W + 140 || p.age > p.life) {
+        P[i] = spawn(false);
+        P[i].x = rnd(-60, W + 60);
+      }
+    }
+    cx2d.globalCompositeOperation = "source-over";
+  }
+
+  // ────────────────────────── ⑤ 前景散景 ──────────────────────────
+  function buildFront() {
+    const box = $("#front");
+    box.innerHTML = "";
+    const n = W < 700 ? 7 : 14;
+    for (let i = 0; i < n; i++) {
+      const d = document.createElement("div");
+      const s = rnd(26, 96);
+      d.style.cssText =
+        "position:absolute;border-radius:50%;" +
+        "width:" + s + "px;height:" + s + "px;" +
+        "left:" + rnd(-5, 100) + "%;top:" + rnd(20, 108) + "%;" +
+        "background:radial-gradient(circle, rgba(255,240,250,.5) 0%, rgba(255,200,230,.22) 42%, rgba(255,200,230,0) 72%);" +
+        "filter:blur(" + rnd(4, 14).toFixed(0) + "px);" +
+        "animation:foDrift " + rnd(14, 30).toFixed(0) + "s linear infinite;" +
+        "animation-delay:-" + rnd(0, 30).toFixed(0) + "s;";
+      box.appendChild(d);
+    }
+  }
+  // 前台散景的 keyframes 用 JS 注入（避免再写一段 CSS）
+  const st = document.createElement("style");
+  st.textContent = "@keyframes foDrift{ 0%{transform:translate3d(0,40px,0) scale(.9);opacity:0} 15%{opacity:.9} 85%{opacity:.5} 100%{transform:translate3d(-60px,-120px,0) scale(1.25);opacity:0} }";
+  document.head.appendChild(st);
+
+  // ────────────────────────── ⑥ 冲击闪光 ──────────────────────────
+  let lastShock = 0;
+  function shock(force) {
+    const now = performance.now();
+    if (now - lastShock < 420) return;
+    lastShock = now;
+    const f = $("#flash");
+    f.classList.remove("go");
+    void f.offsetWidth;
+    f.classList.add("go");
+    // 顺便甩一把粒子
+    for (let i = 0; i < (force ? 40 : 18); i++) {
+      const p = spawn(false);
+      p.k = "star"; p.x = rnd(0, W); p.y = rnd(0, H * .8);
+      p.life = rnd(1.2, 2.6); p.age = 0; p.a = rnd(.7, 1);
+      P.push(p);
+    }
+  }
+  setInterval(() => { if (Math.random() < .55) shock(false); }, 7000);
+
+  // ────────────────────────── ⑦ 点击撒花 ──────────────────────────
+  const EMOJI = ["🌸", "💗", "✨", "🍓", "☕", "💕", "⭐", "🎀", "🍰", "🫧"];
+  function burst(x, y, n) {
+    for (let i = 0; i < (n || 18); i++) {
+      const d = document.createElement("div");
+      d.textContent = EMOJI[Math.floor(rnd(0, EMOJI.length))];
+      const ang = rnd(0, Math.PI * 2), dist = rnd(80, 300);
+      d.style.cssText =
+        "position:fixed;pointer-events:none;z-index:40;left:" + x + "px;top:" + y + "px;" +
+        "font-size:" + rnd(14, 34).toFixed(0) + "px;" +
+        "--dx:" + (Math.cos(ang) * dist).toFixed(0) + "px;" +
+        "--dy:" + (Math.sin(ang) * dist - 60).toFixed(0) + "px;" +
+        "--rot:" + rnd(-420, 420).toFixed(0) + "deg;" +
+        "animation:confFly " + rnd(.9, 1.7).toFixed(2) + "s cubic-bezier(.15,.7,.3,1) forwards;";
+      document.body.appendChild(d);
+      setTimeout(() => d.remove(), 1900);
+    }
+  }
+  const st2 = document.createElement("style");
+  st2.textContent = "@keyframes confFly{ 0%{transform:translate(0,0) scale(.3) rotate(0);opacity:1} 100%{transform:translate(var(--dx),var(--dy)) scale(1.15) rotate(var(--rot));opacity:0} }";
+  document.head.appendChild(st2);
+  window.addEventListener("pointerdown", (e) => { burst(e.clientX, e.clientY, 20); shock(true); });
+
+  // ────────────────────────── ⑧ 模式 ──────────────────────────
+  const MODES = {
+    warm:   { tint:"#ffb98a", amb:"brightness(.72) saturate(1.5)", rays:.55, part:"warm" },
+    night:  { tint:"#7a8cff", amb:"brightness(.44) saturate(.9)",  rays:.30, part:"night" },
+    sakura: { tint:"#ff9ec4", amb:"brightness(.8)  saturate(1.7)", rays:.62, part:"sakura" },
+    gold:   { tint:"#ffd98a", amb:"brightness(.86) saturate(1.35)",rays:.7,  part:"gold" },
+  };
+  function applyMode(m) {
+    const c = MODES[m] || MODES.warm;
+    const t = $("#tint");
+    t.style.animation = "none";
+    t.style.background = c.tint;
+    t.style.opacity = ".38";
+    $("#ambient").style.filter = "blur(34px) " + c.amb;
+    $("#rays").style.opacity = c.rays;
+    // 粒子换色
+    const hues = { warm:[340,30,45], night:[220,250,200], sakura:[330,345,300], gold:[45,35,20] };
+    const hs = hues[c.part] || hues.warm;
+    P.forEach((p) => { p.hue = hs[Math.floor(rnd(0, hs.length))]; });
+    document.querySelectorAll("#modes button").forEach((b) => b.classList.toggle("on", b.dataset.m === m));
+  }
+  document.querySelectorAll("#modes button").forEach((b) => {
+    b.onclick = (e) => { e.stopPropagation(); applyMode(b.dataset.m); };
+  });
+  const KEYS = { "1":"warm", "2":"night", "3":"sakura", "4":"gold" };
+  window.addEventListener("keydown", (e) => {
+    if (KEYS[e.key]) applyMode(KEYS[e.key]);
+    if (e.code === "Space") { e.preventDefault(); shock(true); burst(rnd(W*.3,W*.7), rnd(H*.3,H*.6), 26); }
+  });
+
+  // ────────────────────────── 时钟 + 帧率 ──────────────────────────
+  function tickClock() {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, "0");
+    $("#ctime").textContent = p(d.getHours()) + ":" + p(d.getMinutes());
+    const wd = ["日","一","二","三","四","五","六"][d.getDay()];
+    $("#cdate").textContent = (d.getMonth()+1) + " 月 " + d.getDate() + " 日 · 周" + wd;
+  }
+  tickClock(); setInterval(tickClock, 10000);
+
+  let fpsAcc = 0, fpsN = 0, fpsT = performance.now();
+  function hudTick() {
+    const now = performance.now();
+    fpsAcc += 1000 / Math.max(1, now - fpsT); fpsN++; fpsT = now;
+    if (fpsN >= 20) {
+      $("#hfps").textContent = Math.round(fpsAcc / fpsN);
+      $("#hc").textContent = P.length;
+      fpsAcc = 0; fpsN = 0;
+    }
+    setTimeout(hudTick, 250);
+  }
+
+  // ────────────────────────── 启动 ──────────────────────────
+  resize();
+  initParticles();
+  buildFront();
+  applyMode("warm");
+  hudTick();
+  requestAnimationFrame(frame);
+  // 开场来一发
+  setTimeout(() => shock(true), 400);
+})();
+</script>
+</body>
+</html>

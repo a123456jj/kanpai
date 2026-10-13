@@ -145,17 +145,38 @@ const MIME = {
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".txt": "text/plain; charset=utf-8",
+  ".md": "text/plain; charset=utf-8",
+  // 图片（美化包会用到 jpg/webp）
   ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  // 音效（以后放 sounds/ 里替换合成音，见文档）
+  ".mp3": "audio/mpeg",
+  ".ogg": "audio/ogg",
+  ".wav": "audio/wav",
+  ".m4a": "audio/mp4",
+  ".webm": "video/webm",
+  ".woff2": "font/woff2",
 };
 
 function serveStatic(req, res) {
   let url = req.url.split("?")[0]; // ⚠️ 剥掉 ?p=1 这类查询参数
+  // ⚠️ 必须解码百分号编码！否则中文/空格目录名（比如 mods/示例-星空夜/）
+  //    会按字面 "%E7%A4%BA..." 去找文件 → 永远 404
+  try { url = decodeURIComponent(url); } catch (e) { /* 编码坏了就用原样 */ }
   if (url === "/" || url === "") url = "/index.html";
   const file = path.join(ROOT, url.replace(/^\/+/, ""));
-  if (!file.startsWith(ROOT)) { res.writeHead(403); res.end("403"); return; }
-  fs.readFile(file, (err, data) => {
+  // 安全：解析后必须还在 ROOT 里面（防 ../ 路径穿越）
+  const real = path.resolve(file);
+  if (!real.startsWith(path.resolve(ROOT))) { res.writeHead(403); res.end("403"); return; }
+  fs.readFile(real, (err, data) => {
     if (err) { res.writeHead(404); res.end("404 Not Found"); return; }
-    const ext = path.extname(file).toLowerCase();
+    const ext = path.extname(real).toLowerCase();
     res.writeHead(200, {
       "Content-Type": MIME[ext] || "application/octet-stream",
       // 🔴 禁止浏览器缓存，避免"改了代码但浏览器还跑旧的"
@@ -1452,6 +1473,60 @@ const server = http.createServer((req, res) => {
         "\n手牌=" + game.players.map((p) => p.hand.length).join("/")) : "（没有对局）"));
     return;
   }
+  // ============================================================
+  // 🎨 美化包（mods/）
+  //    GET /mods          → 列出所有美化包（含各自的 pack.json 内容）
+  //    GET /mods/<包名>/<文件>  → 静态文件（走下面的通用静态服务）
+  //    约定每个包是个文件夹，里面放：
+  //      pack.json · background.png · cardback.png · logo.png · frame.png
+  // ============================================================
+  if (req.url === "/mods") {
+    const modsDir = path.join(ROOT, "mods");
+    const list = [];
+    try {
+      if (fs.existsSync(modsDir)) {
+        for (const name of fs.readdirSync(modsDir)) {
+          const dir = path.join(modsDir, name);
+          let st = null;
+          try { st = fs.statSync(dir); } catch (e) { continue; }
+          if (!st.isDirectory()) continue;
+          // 收集这个包里有哪些图
+          const files = {};
+          for (const [key, fname] of [
+            ["background", "background.png"], ["cardback", "cardback.png"],
+            ["logo", "logo.png"], ["frame", "frame.png"],
+          ]) {
+            for (const ext of [".png", ".jpg", ".jpeg", ".webp"]) {
+              const f = path.join(dir, key + ext);
+              if (fs.existsSync(f)) { files[key] = key + ext; break; }
+            }
+          }
+          // 读 pack.json
+          let meta = {};
+          const pj = path.join(dir, "pack.json");
+          try { if (fs.existsSync(pj)) meta = JSON.parse(fs.readFileSync(pj, "utf8")); } catch (e) { }
+          list.push({
+            id: name,
+            name: meta.name || name,
+            author: meta.author || "",
+            desc: meta.desc || "",
+            version: meta.version || "",
+            overlay: meta.overlay !== undefined ? Number(meta.overlay) : 0.25,
+            blur: meta.blur !== undefined ? Number(meta.blur) : 0,
+            hideBokeh: !!meta.hideBokeh,
+            tags: meta.tags || [],
+            files: files,
+            hasAny: Object.keys(files).length > 0,
+          });
+        }
+      }
+    } catch (e) { console.log("[美化包] 读取失败: " + e.message); }
+    console.log("[美化包] 发现 " + list.length + " 个（" + list.map((m) => m.name).join("、") + "）");
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify(list));
+    return;
+  }
+
   if (req.url === "/pending" && process.argv.indexOf("--debug") >= 0) {
     const body = game ? {
       阶段: game.phase,

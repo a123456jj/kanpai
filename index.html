@@ -17,6 +17,10 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;min-height:100%}
+/* 🎨 美化包（mods/）注入的两条变量：
+     --cardback-url  对手手牌的卡背图
+     --hide-bokeh    1 = 藏掉游戏自带的糖果色圆点（用了整图背景时） */
+:root{ --cardback-url: none; --hide-bokeh: 0; }
 body{
   color:var(--ink); font-weight:bold;
   font-family:"Comic Sans MS","Yuanti SC","YouYuan","Microsoft YaHei",system-ui,sans-serif;
@@ -283,8 +287,27 @@ button.gear:hover{transform:rotate(35deg) translateY(-2px)}
     linear-gradient(165deg,#f0e4ff 0%,#d4a8ff 60%,#ad6bff 100%);
   cursor:default;
 }
-.card.back::after{content:"★";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  font-size:52px;color:rgba(255,255,255,.6);text-shadow:0 3px 0 rgba(74,53,32,.18)}
+/* 🎨 美化包给了卡背图 → 用它（原来的花纹盖掉）
+   客户端会往 <html> 上设 data-cardback="1" */
+html[data-cardback="1"] .card.back{
+  background-image:var(--cardback-url) !important;
+  background-size:cover !important;
+  background-position:center !important;
+  background-repeat:no-repeat !important;
+}
+/* 有卡背图时，藏掉原来的斜纹高光和 ★ */
+html[data-cardback="1"] .card.back::before{ opacity:0; }
+html[data-cardback="1"] .card.back::after{ content:""; }
+
+/* 🎨 藏掉游戏自带的糖果圆点（用了整图背景时）
+   客户端会往 <html> 上设 data-hidebokeh="1" */
+html[data-hidebokeh="1"] body{
+  background-image:none !important;
+  background-color:transparent !important;
+}
+/* 有整图背景时，页面底色也要压暗，免得露白边 */
+html[data-modbg="1"]{ background:#0a0812; }
+html[data-modbg="1"] .panel{ backdrop-filter:blur(3px); }
 
 /* 提示气泡 */
 #prompt{
@@ -428,7 +451,27 @@ button.gear:hover{transform:rotate(35deg) translateY(-2px)}
       <a href="demo.html" style="text-decoration:none;flex:1;display:flex">
         <button style="width:100%">🎬 演出演示</button></a>
     </div>
+    <div class="btns" style="margin-top:8px">
+      <a href="chara.html" style="text-decoration:none;flex:1;display:flex">
+        <button style="width:100%">☕ 咖啡厅少女</button></a>
+      <a href="wallpaper.html" style="text-decoration:none;flex:1;display:flex">
+        <button style="width:100%">☕ 壁纸·咖啡厅</button></a>
+      <a href="starry.html" style="text-decoration:none;flex:1;display:flex">
+        <button style="width:100%">🌙 壁纸·星空</button></a>
+    </div>
     <div class="mini" style="margin-top:9px">图鉴能看到全部 60 张牌，点一下就能看去它的动画</div>
+  </div>
+
+  <div class="sec">
+    <div class="t">🎨 美化包</div>
+    <div class="btns" id="modList" style="flex-direction:column;gap:6px">
+      <div class="mini">读取中…</div>
+    </div>
+    <div class="mini" style="margin-top:9px">
+      想自己做？把图扔进 <b>game\mods\你的包名\</b> 里就行<br>
+      （背景命名 <b>background.png</b>、卡背 <b>cardback.png</b>）<br>
+      详见 <b>game\mods\README-美化包制作.md</b>
+    </div>
   </div>
 
   <div class="sec">
@@ -556,6 +599,6 @@ button.gear:hover{transform:rotate(35deg) translateY(-2px)}
 })();
 </script>
 <script src="fx.js?v=28"></script>
-<script src="client.js?v=46"></script>
+<script src="client.js?v=47"></script>
 </body>
 </html>

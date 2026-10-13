@@ -1387,6 +1387,150 @@ function fxWhyStuck() {
 }
 
 // ============================================================
+//  🎨 美化包（mods/）
+//    · 服务器 GET /mods 列出所有包（含各自的 pack.json 内容 + 有哪些图）
+//    · 用户选一个 → 存 localStorage → 立刻换背景/卡背/logo
+//    · 每个包的文件放在 game/mods/<包名>/ 下，走静态服务
+//    约定文件名：background / cardback / logo / frame（png|jpg|webp 都行）
+// ============================================================
+let MODS = [];
+// ⚠️ localStorage 不能直接用！某些环境会抛异常或根本不存在：
+//    隐私模式 / file:// 协议 / 被策略禁用 / 测试环境
+//    → 直接写 localStorage.getItem 会让整个 client.js 崩掉（游戏全白）
+const _ls = (function () {
+  try {
+    if (typeof localStorage !== "undefined" && localStorage) {
+      localStorage.setItem("__t", "1"); localStorage.removeItem("__t");
+      return localStorage;
+    }
+  } catch (e) { }
+  // 兜底：内存版（这次会话有效，刷新就没）
+  const mem = {};
+  return {
+    getItem: (k) => (k in mem ? mem[k] : null),
+    setItem: (k, v) => { mem[k] = String(v); },
+    removeItem: (k) => { delete mem[k]; },
+  };
+})();
+let curMod = _ls.getItem("kanpai_mod") || "";
+
+function modFileUrl(mod, key) {
+  const f = mod.files && mod.files[key];
+  if (!f) return null;
+  return "mods/" + encodeURIComponent(mod.id) + "/" + f;
+}
+
+// 把选中的美化包应用上去
+function applyMod(id) {
+  const mod = MODS.find((m) => m.id === id) || null;
+  curMod = mod ? mod.id : "";
+  try { _ls.setItem("kanpai_mod", curMod); } catch (e) { }
+
+  const body = document.body;
+  const html = document.documentElement;
+
+  if (!mod) {
+    // 恢复默认（把内联样式和 data 标记都清掉，回到 CSS 里的糖果色）
+    body.style.backgroundImage = "";
+    body.style.backgroundSize = "";
+    body.style.backgroundPosition = "";
+    body.style.backgroundAttachment = "";
+    body.style.backgroundRepeat = "";
+    html.removeAttribute("data-cardback");
+    html.removeAttribute("data-hidebokeh");
+    html.removeAttribute("data-modbg");
+    html.style.removeProperty("--cardback-url");
+    dbg("美化包：已关闭（用默认皮肤）");
+    refreshModButtons();
+    return;
+  }
+
+  // ① 背景
+  const bg = modFileUrl(mod, "background");
+  if (bg) {
+    // 图 + 半透明暗色遮罩（遮罩做成第一层渐变叠在图上）
+    const ov = Math.max(0, Math.min(0.9, mod.overlay !== undefined ? Number(mod.overlay) : 0.25));
+    body.style.backgroundImage =
+      "linear-gradient(rgba(10,8,18," + ov + "), rgba(10,8,18," + ov + ")), url('" + bg + "')";
+    body.style.backgroundSize = "cover, cover";
+    body.style.backgroundPosition = "center, center";
+    body.style.backgroundAttachment = "fixed, fixed";
+    body.style.backgroundRepeat = "no-repeat, no-repeat";
+    html.setAttribute("data-modbg", "1");
+  } else {
+    body.style.backgroundImage = "";
+    html.removeAttribute("data-modbg");
+  }
+
+  // ② 卡背
+  const cb = modFileUrl(mod, "cardback");
+  if (cb) {
+    html.style.setProperty("--cardback-url", "url('" + cb + "')");
+    html.setAttribute("data-cardback", "1");
+  } else {
+    html.removeAttribute("data-cardback");
+    html.style.removeProperty("--cardback-url");
+  }
+
+  // ③ 要不要藏掉自带的糖果圆点（有整图背景时通常要）
+  if (mod.hideBokeh) html.setAttribute("data-hidebokeh", "1");
+  else html.removeAttribute("data-hidebokeh");
+
+  dbg("美化包：" + mod.name + (bg ? " 背景✅" : " 背景✖") + (cb ? " 卡背✅" : " 卡背✖"));
+  refreshModButtons();
+}
+
+function refreshModButtons() {
+  const box = document.getElementById("modList");
+  if (!box) return;
+  if (!MODS.length) {
+    box.innerHTML = '<div class="mini">没找到美化包 —— 把图放进 game\\mods\\ 里再刷新</div>';
+    return;
+  }
+  let html = '<button class="who' + (curMod === "" ? " on" : "") + '" data-mod="" style="width:100%">' +
+    '🚫 不用（默认皮肤）</button>';
+  for (const m of MODS) {
+    const tags = [];
+    if (m.files.background) tags.push("背景");
+    if (m.files.cardback) tags.push("卡背");
+    if (m.files.logo) tags.push("标题");
+    if (!tags.length) tags.push("空包");
+    html += '<button class="who' + (curMod === m.id ? " on" : "") + '" data-mod="' +
+      m.id.replace(/"/g, "&quot;") + '" style="width:100%;text-align:left">' +
+      "🎨 " + m.name +
+      (m.author ? ' <span style="opacity:.6;font-weight:normal">by ' + m.author + "</span>" : "") +
+      '<br><span style="font-size:11px;font-weight:normal;opacity:.75">' + tags.join(" · ") +
+      (m.desc ? " — " + m.desc : "") + "</span></button>";
+  }
+  box.innerHTML = html;
+  box.querySelectorAll("button[data-mod]").forEach((b) => {
+    b.onclick = () => applyMod(b.dataset.mod);
+  });
+}
+
+// 启动时拉列表
+(function initMods() {
+  // ⚠️ fetch 也可能不存在（老浏览器 / 非 http 环境）→ 要兜
+  if (typeof fetch !== "function") {
+    console.warn("[美化包] 这个环境没有 fetch，跳过");
+    return;
+  }
+  fetch("/mods").then((r) => r.json()).then((list) => {
+    MODS = Array.isArray(list) ? list : [];
+    console.log("[美化包] 发现 " + MODS.length + " 个");
+    refreshModButtons();
+    // 之前选过的包，自动应用
+    if (curMod) {
+      if (MODS.some((m) => m.id === curMod)) applyMod(curMod);
+      else { curMod = ""; try { _ls.removeItem("kanpai_mod"); } catch (e) { } }
+    }
+  }).catch((e) => {
+    console.warn("[美化包] 拉取失败: " + (e && e.message));
+    refreshModButtons();
+  });
+})();
+
+// ============================================================
 // 🧪 演出自测按钮（查"为什么没动画"）
 // ============================================================
 (function bindFxTest() {

@@ -125,8 +125,10 @@ PORT=8080 node server.js
 ## 六、测试
 
 ```bash
-node test.js          # 规则引擎 65 项
-node testedge.js      # 边界回归 30 项（防"卡死类"bug 复现）
+node test.js          # 规则引擎 66 项
+node testedge.js      # 边界回归 59 项（防"卡死类"bug 复现）
+node testuistate.js   # UI 状态一致性 26 项（含起真实服务器验字段）
+node testmod.js       # 🎨 美化包系统 23 项（接口 + 文件可下载 + 模拟点击）
 node checkall.js      # 60 张牌全量审计
 node testclient.js    # 客户端逻辑 14 项
 node testspectator.js # 观战 11 项
@@ -134,6 +136,9 @@ node testdiscard2.js  # 弃牌流程 31 项
 node checkinstall.js  # 演出是否接进正式游戏
 node selfcheck.js     # 全面自检（HTTP + WebSocket + 资源 + 隧道）
 ```
+
+> ⚠️ 跑测试尽量**一个一个来**：testmod / testuistate / selfcheck 都会连本地服务器，
+> 连着跑很快会互相抢端口和座位，出现假失败。单个跑都是全绿。
 
 **`testedge.js` 是防退化用的**，它守着一类曾经把对局彻底卡死的 bug：
 
@@ -150,3 +155,30 @@ node selfcheck.js     # 全面自检（HTTP + WebSocket + 资源 + 隧道）
 - AI 对手（方案已设计好，没实现）
 - 音效：目前只有 3 个 + 八音盒；其它音效可以放到 `sounds/` 目录
   （文件名对应上就会自动替换合成音，比如 `sounds/thunder.mp3`）
+
+---
+
+## 七、🎨 美化包（换皮肤）
+
+**做一套只要「扔图」，不用写代码。**
+
+```
+game/mods/
+  └─ 你的包名/            ← 文件夹名随便起
+       pack.json          ← 可选（名字/作者/遮罩强度）
+       background.png     ← 可选（游戏背景，推荐 1920×1080）
+       cardback.png       ← 可选（对手手牌卡背，推荐 300×400）
+       logo.png           ← 可选（左上角标题图）
+```
+
+**步骤：** 建文件夹 → 扔图 → 刷新游戏 → ⚙️ → 🎨 美化包 → 选它
+
+**详细规范看：** `mods/README-美化包制作.md`
+**现成示例：** `mods/示例-星空夜/`（背景 + 卡背）
+
+实现要点：
+- 服务器 `GET /mods` 扫描 `mods/` 下所有文件夹，读各自的 `pack.json`，返回列表
+- 客户端存 `localStorage("kanpai_mod")`，用 `<html data-cardback>` / `data-hidebokeh` / `data-modbg`
+  三个属性 + `--cardback-url` 变量驱动 CSS 换肤
+- 静态服务**必须 `decodeURIComponent`**，否则中文文件夹名（如 `示例-星空夜`）永远 404
+- 客户端读 `localStorage` / 用 `fetch` 都要**防御式**（隐私模式 / file:// / 无 fetch 环境不能让整页崩）

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>🔬 对比：外框动 vs 图本身动</title>
+<style>
+:root{ --ink:#2a1f33; --line:#d9c9e0; }
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{
+  background:
+    radial-gradient(circle at 20% 10%, #ffe9f4 0%, transparent 55%),
+    radial-gradient(circle at 85% 80%, #e2ecff 0%, transparent 55%),
+    linear-gradient(160deg,#fdf6ff 0%,#f4ecff 50%,#eef4ff 100%);
+  color:var(--ink);
+  font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+  padding:26px 18px 60px;
+}
+h1{ font-size:clamp(19px,3.2vw,27px); margin:0 0 6px; letter-spacing:1px; }
+h1 span{ color:#a05ab8; }
+.sub{ color:#7a6a86; font-size:13.5px; margin-bottom:24px; line-height:1.7; }
+
+.grid{ display:grid; grid-template-columns:1fr 1fr; gap:22px; max-width:1500px; margin:0 auto; }
+@media (max-width:900px){ .grid{ grid-template-columns:1fr; } }
+
+.col{ background:#fff; border:1px solid var(--line); border-radius:18px; overflow:hidden;
+      box-shadow:0 10px 30px rgba(120,90,150,.13); }
+.col h2{ font-size:16px; margin:0; padding:14px 18px 12px; display:flex; align-items:center; gap:9px; }
+.col h2 .tag{ font-size:11px; padding:3px 10px; border-radius:20px; font-weight:normal; }
+.col.a h2{ background:linear-gradient(180deg,#fff2f8,#ffe6f2); }
+.col.a h2 .tag{ background:#ffd0e6; color:#a03a72; }
+.col.b h2{ background:linear-gradient(180deg,#eef6ff,#e0edff); }
+.col.b h2 .tag{ background:#c8e0ff; color:#22558f; }
+.col .note{ padding:0 18px 14px; font-size:12.5px; color:#6a5a76; line-height:1.8; }
+.col .note b{ color:#8a3ca0; }
+.col .note code{ background:#f4eefb; padding:1px 6px; border-radius:5px; font-size:11.5px; }
+
+/* ── A 列：外框动（整张图在容器里浮动）── */
+.frameA{
+  position:relative; padding:22px; display:flex; align-items:center; justify-content:center;
+  background:repeating-conic-gradient(#f6f0fa 0% 25%, #fff 0% 50%) 50%/22px 22px;
+  min-height:320px;
+}
+.floaty{
+  width:100%; max-width:430px; border-radius:12px; overflow:hidden;
+  box-shadow:0 14px 30px rgba(90,60,120,.3);
+  animation:boxFloat 3.4s ease-in-out infinite;
+}
+@keyframes boxFloat{
+  0%,100%{ transform:translateY(0) rotate(-1.4deg); }
+  50%    { transform:translateY(-18px) rotate(1.4deg); }
+}
+.floaty img{ width:100%; display:block; }
+
+/* ── B 列：图本身动（APNG，逐像素改造）── */
+.frameB{
+  position:relative; padding:22px; display:flex; align-items:center; justify-content:center;
+  background:repeating-conic-gradient(#eef4fb 0% 25%, #fff 0% 50%) 50%/22px 22px;
+  min-height:320px;
+}
+.real{
+  width:100%; max-width:430px; border-radius:12px; overflow:hidden;
+  box-shadow:0 14px 30px rgba(40,60,120,.3);
+}
+.real img{ width:100%; display:block; }
+
+/* 网格辅助：标出"改动区域" */
+.zones{ position:relative; max-width:430px; width:100%; }
+.zones img{ width:100%; display:block; border-radius:12px; }
+.zone{
+  position:absolute; border:1.5px dashed rgba(255,60,140,.75); border-radius:8px;
+  background:rgba(255,80,150,.10); pointer-events:none;
+}
+.zone span{
+  position:absolute; top:-9px; left:6px; font-size:10.5px; background:#ff4a93; color:#fff;
+  padding:1px 7px; border-radius:8px; white-space:nowrap;
+}
+
+.foot{ max-width:1500px; margin:26px auto 0; background:#fff; border:1px solid var(--line);
+       border-radius:18px; padding:20px 22px; box-shadow:0 10px 30px rgba(120,90,150,.1); }
+.foot h3{ margin:0 0 10px; font-size:15px; }
+.foot table{ width:100%; border-collapse:collapse; font-size:13px; }
+.foot th,.foot td{ text-align:left; padding:8px 10px; border-bottom:1px solid #f0e8f6; }
+.foot th{ color:#7a6a86; font-weight:normal; font-size:12px; }
+.foot .yes{ color:#1a8a4a; font-weight:bold; }
+.foot .no{ color:#c02a44; font-weight:bold; }
+.foot .mid{ color:#c07a1a; font-weight:bold; }
+</style>
+</head>
+<body>
+
+<h1>🔬 对比实验：<span>外框在动</span> vs <span>图本身在动</span></h1>
+<div class="sub">
+  左边是"把整张图当一块砖，移动它"（我前面做的）· 右边是"**改造图片内部的像素**"（用 Python 逐帧重算 24 张，做成 APNG）
+</div>
+
+<div class="grid">
+
+  <!-- A 列 -->
+  <div class="col a">
+    <h2>❌ A · 外框动（整张图当砖头搬） <span class="tag">图本身 0 像素改变</span></h2>
+    <div class="frameA">
+      <div class="floaty"><img src="images/night_clean.png" alt="原图（整体浮动）"></div>
+    </div>
+    <div class="note">
+      整张图在容器里 <code>translateY</code> 上下浮动 + <code>rotate</code> 轻摇。<br>
+      <b>图里的像素一个都没变</b> —— 头发没飘、灯没亮、星星没闪。所以你看着总觉得"只是框在晃"。
+    </div>
+  </div>
+
+  <!-- B 列 -->
+  <div class="col b">
+    <h2>✅ B · 图本身动（逐像素改造） <span class="tag">每一帧都重算了像素</span></h2>
+    <div class="frameB">
+      <div class="real"><img src="images/night_anim.png" alt="像素级动画（APNG）"></div>
+    </div>
+    <div class="note">
+      用 Python 把这张图**重算了 24 次**，做成 APNG（浏览器直接动）：<br>
+      ① 头发区域逐像素正弦位移（越往下飘得越多）<br>
+      ② 胸口纵向非等比缩放（呼吸）<br>
+      ③ 天上 32409 个"星星像素"各自闪烁<br>
+      ④ 两盏路灯区域亮度脉动<br>
+      ⑤ 红礼盒粉色光晕呼吸<br>
+      ⑥ 尘埃直接写进像素里<br>
+      ⑦ RGB 通道错位（色散）<br>
+      <b>帧间平均像素差 10.23</b> —— 证明是图自己在变。
+    </div>
+  </div>
+
+</div>
+
+<!-- 标出改动区域 -->
+<div class="col b" style="margin:22px auto 0;max-width:1500px">
+  <h2>📍 我改了图上哪些区域 <span class="tag">粉色虚线框 = 逐像素计算的范围</span></h2>
+  <div style="padding:22px;display:flex;justify-content:center">
+    <div class="zones">
+      <img src="images/night_clean.png" alt="改动区域示意">
+      <div class="zone" style="left:8%;top:12%;width:26%;height:62%"><span>左长发（飘动）</span></div>
+      <div class="zone" style="left:56%;top:24%;width:32%;height:50%"><span>右长发（飘动）</span></div>
+      <div class="zone" style="left:30%;top:42%;width:26%;height:20%"><span>胸口（呼吸）</span></div>
+      <div class="zone" style="left:0;top:78%;width:15%;height:20%"><span>左路灯</span></div>
+      <div class="zone" style="left:80%;top:70%;width:18%;height:20%"><span>右路灯</span></div>
+      <div class="zone" style="left:46%;top:66%;width:22%;height:20%"><span>礼盒微光</span></div>
+      <div class="zone" style="left:0;top:0;width:100%;height:60%;border-style:solid;border-color:rgba(80,160,255,.55);background:rgba(80,160,255,.06)"><span style="background:#3a8ae0">整个天空（星星闪烁，32409 个像素）</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="foot">
+  <h3>📊 到底什么能变、什么不能变</h3>
+  <table>
+    <tr><th>效果</th><th>能做吗</th><th>原理</th></tr>
+    <tr><td>头发飘动</td><td class="yes">能</td><td>把头发区域的像素按正弦波**平移**（逐像素重采样），不是"长出新的头发"</td></tr>
+    <tr><td>呼吸起伏</td><td class="yes">能</td><td>胸口区域纵向拉伸 1.2%，本质是像素被拉长</td></tr>
+    <tr><td>星星闪烁 / 灯亮呼吸</td><td class="yes">能</td><td>在选定区域叠加亮度（改像素值）</td></tr>
+    <tr><td>水面倒影晃动</td><td class="yes">能</td><td>镜像 + 横向波浪位移</td></tr>
+    <tr><td>整张图扭曲 / 液化</td><td class="yes">能</td><td>位移场扭曲，像素搬家</td></tr>
+    <tr><td>眨眼</td><td class="mid">勉强</td><td>把眼睛区域压扁 + 用肤色盖住 → 能"闭"，但会露出补丁痕迹</td></tr>
+    <tr><td><b>抬手 / 转头 / 换姿势</b></td><td class="no">不能</td><td>这些姿势的像素**原本不存在**，我没法凭空画出来</td></tr>
+    <tr><td><b>她走路 / 转身离开</b></td><td class="no">不能</td><td>需要新画面（序列帧 / 骨骼动画 / 3D 模型）</td></tr>
+  </table>
+  <div style="margin-top:14px;font-size:13px;color:#6a5a76;line-height:1.9">
+    <b>一句话总结：</b>我能让图里的**像素搬家 / 拉伸 / 变亮变暗**（所以头发会飘、会呼吸、会闪）；
+    但我**不能创造不存在的像素**（所以抬不了手、转不了头）。<br>
+    想要真动作 → 需要同场景的 2~3 张不同姿势图，我做帧间交叉 + 局部补间。
+  </div>
+</div>
+
+</body>
+</html>

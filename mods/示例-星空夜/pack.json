@@ -1,0 +1,10 @@
+{
+  "name": "示例·星空夜",
+  "author": "DSH",
+  "version": "1.0",
+  "desc": "用「星空下的少女」做的一套示例美化包（背景 + 卡背）",
+  "overlay": 0.3,
+  "blur": 0,
+  "tags": ["night", "starry", "blue"],
+  "hideBokeh": true
+}
