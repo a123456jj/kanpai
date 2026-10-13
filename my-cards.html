@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>🎨 我画的 5 张卡牌图案</title>
+<style>
+body{background:#f7f5fb;color:#241a2c;padding:26px 18px 70px;margin:0;
+ font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif}
+h1{font-size:22px;margin:0 0 8px}
+.sub{font-size:13.5px;line-height:1.9;color:#6b6478;max-width:1000px;margin:0 0 22px}
+.sub b{color:#111}
+.box{background:#fff;border:1px solid #e6e1ef;border-radius:16px;padding:20px;max-width:1120px;
+ box-shadow:0 6px 26px rgba(80,60,130,.07);margin-bottom:20px}
+.box h2{font-size:15px;margin:0 0 14px}
+.box img{width:100%;border-radius:10px;display:block}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid #f0ecf6;vertical-align:middle}
+th{color:#6b6478;font-size:11.5px;font-weight:600}
+td img{image-rendering:auto}
+/* ⚠️ 透明底图在浅色页面上会「看起来是白的」→ 必须给棋盘格背景才能看出透明 */
+.ck{background:repeating-conic-gradient(#e8e4ee 0% 25%, #ffffff 0% 50%) 50%/14px 14px;
+    border-radius:10px;padding:4px;display:inline-block}
+.ck img{display:block}
+.row{display:flex;gap:14px;flex-wrap:wrap}
+.it{text-align:center}
+.it .cap{font-size:11.5px;color:#6b6478;margin-top:6px}
+.ok{color:#12864a;font-weight:700}
+.warn{color:#c07000;font-weight:700}
+</style></head><body>
+<h1>🎨 我画的 5 张卡牌图案</h1>
+<p class="sub">
+  风格按你说的来：<b>平涂色块 + 深色描边 + 简洁几何</b>。但把你手绘里"不够准"的地方补齐了 ——
+  线条用 4 倍超采样画的（边缘平滑不毛）、比例调到主体占 70%、加了一档高光和一档暗部（不做渐变）。<br>
+  <b>五个类别各一张</b>：回复 / 控制 / 攻击 / 防御 / 状态 —— 能看出整套的风格方向。
+</p>
+
+<div class="box" style="background:#fffbe8;border-color:#f0e0a8">
+  <h2>👀 先看这张 —— 白底拼图（不会看不出）</h2>
+  <img src="images/cards/_白底_5张.png" alt="五张卡牌图案">
+  <div style="font-size:12.5px;color:#8a7a3c;margin-top:10px">
+    从左到右：西瓜（回复）· 土豆地雷（控制）· 一拳（攻击）· 飞轮（防御）· 毒鸡汤（状态）
+  </div>
+</div>
+
+<div class="box">
+  <h2>放进卡牌的样子</h2>
+  <img src="images/cards/_卡牌预览_白底.png" alt="">
+</div>
+
+<div class="box">
+  <h2>原图（96×96，透明底 —— 下面垫了棋盘格，灰色格子就是透明的地方）</h2>
+  <div class="row">
+    <div class="it"><span class="ck"><img src="images/cards/西瓜.png" width="128" height="128"></span><div class="cap">西瓜 · 回复</div></div>
+    <div class="it"><span class="ck"><img src="images/cards/土豆地雷.png" width="128" height="128"></span><div class="cap">土豆地雷 · 控制</div></div>
+    <div class="it"><span class="ck"><img src="images/cards/一拳.png" width="128" height="128"></span><div class="cap">一拳 · 攻击</div></div>
+    <div class="it"><span class="ck"><img src="images/cards/飞轮.png" width="128" height="128"></span><div class="cap">飞轮 · 防御</div></div>
+    <div class="it"><span class="ck"><img src="images/cards/毒鸡汤.png" width="128" height="128"></span><div class="cap">毒鸡汤 · 状态</div></div>
+  </div>
+  <div style="margin-top:14px;font-size:12.5px;color:#6b6478">
+    实际尺寸（手牌里大概这么大）：<br>
+    <img src="images/cards/_实际尺寸.png" style="margin-top:8px;border-radius:8px" alt="">
+  </div>
+</div>
+
+<div class="box">
+  <h2>📐 统一规格（后面 55 张都按这个）</h2>
+  <table>
+    <tr><th style="width:26%">项目</th><th>规格</th></tr>
+    <tr><td>画布</td><td>96×96，透明底 PNG</td></tr>
+    <tr><td>主体占比</td><td>约 70%（四周留 9% 边距）</td></tr>
+    <tr><td>描边</td><td>统一深色 #241A2C，粗细一致</td></tr>
+    <tr><td>颜色</td><td>每个色相 3 档（暗/中/亮），平涂不用渐变</td></tr>
+    <tr><td>明暗</td><td>只加"一档高光 + 一档暗部"，光源固定在左上</td></tr>
+    <tr><td>文件大小</td><td>6~13 KB / 张</td></tr>
+  </tr></table>
+</div>
+
+<div class="box">
+  <h2>🔍 我自己觉得还没到位的地方（你说要不要改）</h2>
+  <table>
+    <tr><th style="width:20%">牌</th><th>状态</th></tr>
+    <tr><td>西瓜</td><td><span class="ok">可以了</span> —— 红瓤在上、绿皮在下、三颗籽、小梗，跟你原稿一致</td></tr>
+    <tr><td>飞轮</td><td><span class="ok">可以了</span> —— 金属轮 + 6 根辐条 + 轴心 + 三道速度弧线</td></tr>
+    <tr><td>毒鸡汤</td><td><span class="ok">可以了</span> —— 碗 + 紫汤 + 气泡 + 骷髅 + 鸡腿 + 毒气</td></tr>
+    <tr><td>土豆地雷</td><td><span class="warn">还行</span> —— 土豆本体、芽眼、引线、火花都有；但左上那块浅色高光有点"斑"的感觉，要不要再调淡</td></tr>
+    <tr><td>一拳</td><td><span class="warn">还行</span> —— 改了三版才读得出"拳头"；现在手指偏短，可能有点像"手掌挡住"，可以再调</td></tr>
+  </table>
+</div>
+
+<div class="box">
+  <h2>🎲 下一步</h2>
+  <p style="font-size:13.5px;line-height:2;margin:0">
+    <b>你先看这 5 张，告诉我：</b><br>
+    ① 风格对不对？（平涂 + 描边 + 一点明暗）<br>
+    ② 有没有哪张特别不满意，我改<br>
+    ③ 确认之后我继续画剩下的 55 张（每张大概 10~20 分钟）<br>
+    ④ 或者你先画几张自己的，我对比着调风格
+  </p>
+</div>
+</body></html>
