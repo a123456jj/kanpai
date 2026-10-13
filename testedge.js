@@ -72,16 +72,15 @@ section("3. 定时炸弹：抽到的人不是当前回合的人");
   ok(g.current === 0, "回合没乱换");
 }
 
-section("4. 定时炸弹打回去：放到对方牌库顶");
+section("4. 定时炸弹打回去：放到公共牌库顶（共用牌库）");
 {
   const g = setup();
   g.players[1].hand = ["定时炸弹"];
-  g.players[1].deck = ["牛奶", "石头"];
-  g.players[0].deck = ["一拳", "木棍"];
+  g.deck = ["牛奶", "石头"];          // 📖 双方共用一副牌 → 牌库在 g.deck 上
   g.pending = { kind: "timebomb", player: 1 };
   E.resolveTimeBomb(g, "play");
-  ok(g.players[0].deck[0] === "定时炸弹", "炸弹放到了对方（玩家1）牌库顶");
-  ok(g.players[1].deck[0] !== "定时炸弹", "自己牌库顶没被塞炸弹");
+  ok(g.deck[0] === "定时炸弹", "炸弹放到了公共牌库顶（谁先抽谁中）");
+  ok(g.deck.length === 3, "牌库多了 1 张（" + g.deck.length + "）");
 }
 
 section("5. 多段攻击（苦无）：after 里必须带 attacker/defender");
@@ -183,7 +182,7 @@ section("10. 定时炸弹：打回去必须付能量（照设计文档『费用�
     g2.timeBombCount = 5;                        // 要 8 能量
     g2.players[0].hand = ["定时炸弹"];
     g2.players[0].energy = 4;                    // 不够
-    g2.players[1].deck = ["一拳"];
+    g2.deck = ["一拳"];
     g2.pending = { kind: "timebomb", player: 0 };
     const r = E.resolveTimeBomb(g2, "play");
     ok(r && r.ok === false, "能量不够时，打回去被拒绝（" + (r && r.error) + "）");
@@ -197,7 +196,7 @@ section("10. 定时炸弹：打回去必须付能量（照设计文档『费用�
     g3.timeBombCount = 0;
     g3.players[0].hand = ["定时炸弹"];
     g3.players[0].energy = 10;
-    g3.players[1].deck = ["一拳", "木棍", "石头", "牛奶", "雪球"];
+    g3.deck = ["一拳", "木棍", "石头", "牛奶", "雪球"];
     g3.pending = { kind: "timebomb", player: 0 };
     const before = g3.players[0].energy;
     const r = E.resolveTimeBomb(g3, "play");
@@ -234,7 +233,8 @@ section("10. 定时炸弹：打回去必须付能量（照设计文档『费用�
 section("11. 炸弹不再无限对传（模拟双方都选打回去）");
 {
   const g = setup();
-  g.players[0].deck = ["定时炸弹"].concat(g.players[0].deck);
+  // 📖 共用牌库：牌库在 g.deck 上。给足牌，免得抽干干扰测试
+  g.deck = ["定时炸弹"].concat(require("./cards.js").DECK_ALL);
   let passes = 0, drops = 0;
   for (let step = 0; step < 4000 && g.phase === "playing"; step++) {
     if (g.pending) {

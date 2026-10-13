@@ -166,7 +166,10 @@ function scoreCard(g, me, cardName, diff) {
   return s;
 }
 
-// 选出这一回合要出的牌（可多次调用，每次出完重挑）
+// 选出这一回合要出的牌
+//   返回 { name, x } —— x 是变费牌（X / X+1）的取值，普通牌是 0
+//   ⚠️ 必须返回 x！之前只返回牌名，变费牌的 x 是 undefined
+//      → 引擎报"费用不合法" → AI 白费一回合（实测：AI 连打 3 次雪球全失败）
 function aiChooseCard(g, meIdx, diff) {
   const me = g.players[meIdx];
   if (!me || me.hp <= 0 || g.phase !== "playing") return null;
@@ -174,14 +177,22 @@ function aiChooseCard(g, meIdx, diff) {
   //    否则会"出牌失败 → 重试 → 死循环"（之前真出过这个 bug）
   if (me.canPlayThisTurn === false) return null;
   const { CARD_BY_NAME } = require("./cards.js");
+  // 变费牌（X / X+1）要自己算一个 X 值，否则会报"费用不合法"白费一回合
+  const xFor = (card) => {
+    // 简单策略：能出多少出多少，但留一点（最多花光，最少 1）
+    const afford = Math.floor(me.energy);
+    if (card.cost === "X+1") return Math.max(1, afford - 1);
+    return Math.max(1, afford);
+  };
   const playable = [];
   for (const name of me.hand) {
     const c = CARD_BY_NAME[name];
     if (!c) continue;
-    const cost = c.cost === "X" ? 0 : (c.cost === "X+1" ? 0 : (Number(c.cost) || 0));
+    const raw = c.cost;
+    const cost = raw === "X" ? xFor(c) : (raw === "X+1" ? xFor(c) + 1 : (Number(raw) || 0));
     if (cost > me.energy) continue;                       // 能量不够
     if (c.effect === "dmg_cond" && me.hand.length > (c.condHandMax || 3)) continue;  // 石头这类条件牌
-    playable.push({ name, s: scoreCard(g, me, name, diff) });
+    playable.push({ name, s: scoreCard(g, me, name, diff), x: (raw === "X" || raw === "X+1") ? xFor(c) : 0 });
   }
   if (!playable.length) return null;
   playable.sort((a, b) => b.s - a.s);
@@ -194,7 +205,10 @@ function aiChooseCard(g, meIdx, diff) {
     const v = typeof c.value === "number" ? c.value : 0;
     return Math.max(0, v - (foeP.shieldThisTurn || 0)) >= foeP.hp;
   });
-  if (killNow && !(diff === "easy" && Math.random() < 0.2)) return killNow.name;
+  // 统一出口：返回 { name, x }（x 是变费牌的取值）
+  const pick = (p) => (p ? { name: p.name, x: p.x || 0 } : null);
+
+  if (killNow && !(diff === "easy" && Math.random() < 0.2)) return pick(killNow);
 
   // 💚 保命优先：血很少时，如果手里有治疗牌，先治（easy 偶尔会忘）
   if (me.hp <= 8) {
@@ -202,20 +216,20 @@ function aiChooseCard(g, meIdx, diff) {
       const c = CARD_BY_NAME[p.name];
       return c && /^heal/.test(c.effect || "");
     });
-    if (heal && (diff !== "easy" || Math.random() < 0.75)) return heal.name;
+    if (heal && (diff !== "easy" || Math.random() < 0.75)) return pick(heal);
   }
 
   // easy：30% 概率乱选
   if (diff === "easy" && Math.random() < 0.3) {
-    return playable[(Math.random() * playable.length) | 0].name;
+    return pick(playable[(Math.random() * playable.length) | 0]);
   }
   // normal：前 2 名里随机（不那么死板）
   if (diff !== "hard" && playable.length > 1 && Math.random() < 0.25) {
-    return playable[1].name;
+    return pick(playable[1]);
   }
   // 分数太低就别出了（省能量）
   if (playable[0].s < -3.5 && diff !== "easy") return null;
-  return playable[0].name;
+  return pick(playable[0]);
 }
 
 // ---------- 各种"待决策"怎么处理 ----------
@@ -299,9 +313,10 @@ function aiResolve(g, pd, diff) {
       return { take: take };
     }
 
-    // 🏆 战利：看**自己**牌库顶 5 张，选 1 张（这个是自己知道的）
+    // 🏆 战利：看**公共牌库**顶 5 张，选 1 张
+    //   ⚠️ 改成共用牌库后，牌库在 g.deck 上（不在玩家身上）
     case "trophy": {
-      const top = me.deck.slice(0, Math.min(5, me.deck.length));
+      const top = (g.deck || []).slice(0, Math.min(5, (g.deck || []).length));
       if (!top.length) return { take: null };
       const best = top.map((n) => ({ n, v: cardBaseValue(CARD_BY_NAME[n]) }))
         .sort((a, b) => b.v - a.v)[0];
@@ -394,6 +409,25 @@ function aiResolve(g, pd, diff) {
       const worst = me.hand.map((n) => ({ n, v: cardKeepValue(CARD_BY_NAME[n]) }))
         .sort((a, b) => a.v - b.v).slice(0, cnt);
       return { discard: worst.map((x) => x.n) };
+    }
+
+    // 🔥 焚烧：额外丢 1 张（自选）—— AI 丢最没用的那张
+    //   📖 设计文档：「丢哪张由本人自选」
+    case "burn_discard": {
+      if (!me.hand.length) return { card: null };
+      // 手上只剩 1 张时宁可吃 2 点（别把唯一的牌丢了）
+      if (me.hand.length <= 1) return { card: null };
+      // 血很少时不丢（丢牌 vs 吃 2 点，血少更怕掉血 → 丢牌更划算）
+      if (me.hp <= 4) {
+        const worst2 = me.hand.map((n) => ({ n, v: cardKeepValue(CARD_BY_NAME[n]) }))
+          .sort((a, b) => a.v - b.v)[0];
+        return { card: worst2.n };
+      }
+      const worst = me.hand.map((n) => ({ n, v: cardKeepValue(CARD_BY_NAME[n]) }))
+        .sort((a, b) => a.v - b.v)[0];
+      // 如果最烂的牌都挺值钱，宁可吃 2 点
+      if (worst.v > 4 && me.hp > 10) return { card: null };
+      return { card: worst.n };
     }
 
     // 💣 定时炸弹：打回去 vs 丢掉

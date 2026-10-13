@@ -91,7 +91,11 @@ function runAiOnce() {
   if (game.current !== aiSeat()) return;
 
   // ③ AI 的回合：挑一张牌出
-  const card = AI.aiChooseCard(game, aiSeat(), aiDiff);
+  //   ⚠️ aiChooseCard 现在返回 { name, x }（x 是变费牌 X/X+1 的取值）
+  //      之前只返回牌名 → 变费牌的 x 是 undefined → 引擎报"费用不合法"
+  //      → AI 白费一回合（实测：连打 3 次雪球全失败）
+  const aiPick = AI.aiChooseCard(game, aiSeat(), aiDiff);
+  const card = aiPick ? aiPick.name : null;
   if (card) {
     if (aiBusy) return;
     // 🔒 保险丝：一回合最多行动 12 次，连续失败 3 次就强制结束回合
@@ -106,8 +110,8 @@ function runAiOnce() {
       return;
     }
     aiBusy = true;
-    console.log("[AI] 出牌：" + card);
-    const r = E.playCard(game, aiSeat(), card, {});
+    console.log("[AI] 出牌：" + card + (aiPick.x ? "（X=" + aiPick.x + "）" : ""));
+    const r = E.playCard(game, aiSeat(), card, { x: aiPick.x || 3 });
     if (!r.ok) {
       aiFailCount++;
       console.log("[AI] 出牌失败（" + aiFailCount + "）：" + r.error);
@@ -318,6 +322,9 @@ function passArgFor(kind) {
   switch (kind) {
     case "spring": return { use: false };          // 不用弹簧
     case "convert": return { amount: 0 };          // 不转换
+    // 🔥 焚烧的"额外丢 1 张"：card=null = 选择"不丢，吃 2 点"
+    //    （超时兜底 / 木桩自动决策用它 —— 宁可吃 2 点也别乱丢大牌）
+    case "burn_discard": return { card: null };
     default: return {};                            // 其余空参数＝不挡/不选/不用
   }
 }
@@ -457,7 +464,7 @@ function viewFor(playerIdx) {
       maxEnergy: p.maxEnergy + (E.hasStatus(p, "钻石镐") ? 2 : 0),
       hand: p.hand.slice(),
       handLimit: p.handLimitThisTurn !== undefined ? p.handLimitThisTurn : p.maxHand,
-      deckCount: p.deck.length,
+      deckCount: game.deck.length,          // 双方共用一副牌库
       units: p.units.map((u) => ({ name: u.name, hp: u.hp, atk: u.atk })),
       statuses: E.summarize ? E.summarize(p.statuses) : p.statuses.map((s) => `${s.type}${s.stacks > 1 ? "×" + s.stacks : ""}${s.turns !== null ? "(" + s.turns + ")" : ""}`),
       canPlay: !!p.canPlayThisTurn,
@@ -476,7 +483,7 @@ function viewFor(playerIdx) {
       energy: opp.energy,
       maxEnergy: opp.maxEnergy + (E.hasStatus(opp, "钻石镐") ? 2 : 0),
       handCount: opp.hand.length,
-      deckCount: opp.deck.length,
+      deckCount: game.deck.length,          // 共用牌库（双方看到同一个数）
       units: opp.units.map((u) => ({ name: u.name, hp: u.hp, atk: u.atk })),
       statuses: (E.summarize ? E.summarize(opp.statuses) : opp.statuses.map((s) => `${s.type}${s.stacks > 1 ? "×" + s.stacks : ""}`)),
       shields: opp.shieldThisTurn || 0,
@@ -499,8 +506,8 @@ function viewFor(playerIdx) {
     // 💣 谁牌库顶上有炸弹（客户端据此把炸弹徽章挂到那一方的面板上）
     //    [玩家1牌库顶有炸弹?, 玩家2牌库顶有炸弹?]
     bombOn: [
-      game.players[0].deck[0] === "定时炸弹",
-      game.players[1].deck[0] === "定时炸弹",
+      game.deck[0] === "定时炸弹",
+      game.deck[0] === "定时炸弹",
     ],
     // 💣 谁手上有没处理的炸弹（抽到了但还没决定）
     bombHeld: [
@@ -1006,8 +1013,16 @@ function resolvePending(msg, pd) {
     }
     case "blackhole": {
       // msg: { take: ["牌名", ...] }
+      // 📖 设计文档第 296 行：「观看对方全部手牌，从中选择 **3 张**抽掉（进弃牌堆，非销毁）」
+      //    ⚠️ 之前服务器不检查数量 → 客户端虽然只让选 3 张，但改包能一次抽光对方手牌
+      const BLACKHOLE_MAX = 3;
       const t = P[pd.target];
       const take = msg.take || [];
+      if (!Array.isArray(take)) { c.conn.send({ type: "error", message: "参数不对" }); return false; }
+      if (take.length > BLACKHOLE_MAX) {
+        c.conn.send({ type: "error", message: "黑洞最多只能抽 " + BLACKHOLE_MAX + " 张" });
+        return false;
+      }
       const removed = [];
       for (const n of take) {
         const i = t.hand.indexOf(n);
@@ -1023,13 +1038,13 @@ function resolvePending(msg, pd) {
     case "trophy": {
       // msg: { take: "牌名" } —— 从牌库顶 5 张里选 1
       const p = P[pd.player];
-      const top = p.deck.slice(0, Math.min(5, p.deck.length));
+      const top = game.deck.slice(0, Math.min(5, game.deck.length));
       if (msg.take && top.includes(msg.take)) {
-        p.deck.splice(p.deck.indexOf(msg.take), 1);
+        game.deck.splice(game.deck.indexOf(msg.take), 1);
         p.hand.push(msg.take);
         game.log.push(`${p.name} 用战利拿到了【${msg.take}】`);
       } else if (top.length > 0) {
-        p.deck.shift();
+        game.deck.shift();
         p.hand.push(top[0]);
         game.log.push(`${p.name} 用战利拿到了【${top[0]}】`);
       }
@@ -1115,8 +1130,8 @@ function resolvePending(msg, pd) {
       const name = msg.card;
       if (name && p.hand.includes(name)) {
         p.hand.splice(p.hand.indexOf(name), 1);
-        t.deck.unshift(name);
-        t.deck.unshift("信");
+        game.deck.unshift(name);
+        game.deck.unshift("信");
         game.log.push(`${p.name} 用信把【${name}】和一张空白牌放到了对方牌库顶`);
       }
       game.pending = null;
@@ -1219,6 +1234,16 @@ function resolvePending(msg, pd) {
     }
     case "multi": {
       E.resolveMulti(game);
+      return true;
+    }
+    // 🔥 焚烧：额外丢 1 张（自选）或吃 2 点
+    //    📖 设计文档第 139 / 293 行：「丢哪张由本人自选」
+    case "burn_discard": {
+      const p = P[pd.player];
+      // 传了牌名 → 丢那张；没传 / null → 吃 2 点
+      const r = E.resolveBurnDiscard(game, msg.card || null);
+      if (r && r.ok === false) { c.conn.send({ type: "error", message: r.error }); return false; }
+      console.log("[焚烧] 玩家" + (pd.player + 1) + (msg.card ? " 丢掉了【" + msg.card + "】" : " 选择不丢 → 吃 2 点"));
       return true;
     }
     default:
@@ -1436,7 +1461,7 @@ const server = http.createServer((req, res) => {
       待决策归属: game.pending ? pendingOwner(game.pending) : null,
       玩家: game.players.map((p, i) => ({
         序号: i + 1, 名字: p.name, 血量: p.hp, 能量: p.energy,
-        手牌数: p.hand.length, 手牌上限: p.handLimitThisTurn, 牌库数: p.deck.length,
+        手牌数: p.hand.length, 手牌上限: p.handLimitThisTurn, 牌库数: game.deck.length,
         能出牌: p.canPlayThisTurn, 状态: p.statuses.map((s) => s.type),
       })),
     } : null;

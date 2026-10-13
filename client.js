@@ -323,9 +323,10 @@ async function loadCards() {
 
 // ---------- 渲染 ----------
 function statLine(x, isMe) {
+  // 📖 双方共用一副牌库（设计文档第 17 行）→ 不在这里显示，
+  //    改成在界面上单独显示一个"公共牌库"计数器（见 render 里的 #sharedDeck）
   return `<span class="stat">⚡ <b>${x.energy}</b>/${x.maxEnergy}</span>
           <span class="stat">🃏 ${isMe ? x.hand.length : x.handCount}/${x.handLimit !== undefined ? x.handLimit : 5}</span>
-          <span class="stat">📚 ${x.deckCount}</span>
           ${x.shield ? `<span class="stat">🛡 ${x.shield}</span>` : ""}
           ${x.skipNext ? `<span class="tag bad">下回合不能出牌</span>` : ""}
           ${x.thorns ? `<span class="tag good">反甲</span>` : ""}`;
@@ -530,6 +531,17 @@ function fxTurnBar() {
   } else {
     bar.className = "turnbar theirs";
     txt.textContent = "⏳ 等对方出牌…";
+  }
+
+  // 📖 公共牌库计数（双方共用一副，所以只显示一个）
+  const sd = document.getElementById("sharedDeck");
+  if (sd) {
+    if (S && S.me && typeof S.me.deckCount === "number") {
+      sd.textContent = "📚 牌库 " + S.me.deckCount;
+      sd.style.display = "";
+    } else {
+      sd.style.display = "none";
+    }
   }
 
   // 主操作：开局前显示"开始游戏"，开局后显示"结束回合"
@@ -779,6 +791,23 @@ function renderPrompt() {
         `⛔ 能量不够（要 ${realCost}，只有 ${S.me.energy}）→ 只能丢掉</div>`;
     }
     html += `<button class="danger" onclick="doResolve({choice:'discard'})">丢掉它（自己吃 6 点伤害）</button>`;
+    setPrompt(html);
+    return;
+  }
+
+  // 🔥 焚烧：额外丢 1 张（自选）或吃 2 点
+  //   📖 设计文档第 139 / 293 行：「每回合须额外丢 1 张牌（丢哪张由本人自选），否则扣 2 血」
+  if (pd.kind === "burn_discard") {
+    if (pd.player !== iAm) { setPrompt(`<h3>对方中了焚烧，正在决定丢哪张牌…</h3>`); return; }
+    const hand = myEntry(iAm);
+    let html = `<h3>🔥 焚烧：你必须额外丢 1 张牌（自选）</h3>`;
+    html += `<div style="color:#7a6040;margin-bottom:8px">不想丢也可以 —— 那就直接吃 2 点伤害</div>`;
+    html += `<div>` + hand.map((n) =>
+      `<button class="primary" style="margin:2px;padding:6px 12px" onclick="doResolve({card:'${n}'})">丢【${n}】</button>`
+    ).join(" ") + `</div>`;
+    html += `<div style="margin-top:12px">
+      <button class="danger" style="padding:10px 20px;font-size:15px" onclick="doResolve({card:null})">不丢，吃 2 点伤害</button>
+    </div>`;
     setPrompt(html);
     return;
   }

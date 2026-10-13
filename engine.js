@@ -3,7 +3,10 @@
 // 所有规则都写在这里
 // ============================================================
 
-const { CARDS, CARD_BY_NAME, DECK_A, DECK_B } = require("./cards.js");
+const { CARDS, CARD_BY_NAME, DECK_A, DECK_B, DECK_ALL } = require("./cards.js");
+// 📖 设计文档第 17 / 195 行：「双方共用一副」
+//    → 公共牌库就是那副 60 张（cards.js 的 DECK_ALL）
+const DECK_ALL_SRC = DECK_ALL || DECK_A;
 
 // ---------- 工具 ----------
 function floor05(v) {
@@ -26,7 +29,7 @@ function makeStatus(type, opts = {}) {
 }
 
 // ---------- 玩家 ----------
-function newPlayer(name, deckNames) {
+function newPlayer(name) {
   return {
     name,
     hp: 25,
@@ -37,9 +40,9 @@ function newPlayer(name, deckNames) {
     drawPerTurn: 2,
     maxHand: 5,
     hand: [],
-    deck: shuffle(deckNames),
-    // 记录自己的牌有哪些（用来判断"弃牌堆里哪些牌是自己的"，各洗各的）
-    myCards: deckNames.slice(),
+    // ⚠️ 牌库**不属于**玩家 —— 双方共用 g.deck（设计文档第 17 / 195 行：
+    //    「双方共用一副」「一副公共摸牌堆 + 一副公共弃牌堆」）
+    //    这里不设 deck 字段，避免老代码误以为各人有一副
     units: [],
     statuses: [],
     // 本回合临时
@@ -55,9 +58,15 @@ function newPlayer(name, deckNames) {
 function newGame(opts = {}) {
   const g = {
     players: [
-      newPlayer("玩家1", opts.deckA || DECK_A),
-      newPlayer("玩家2", opts.deckB || DECK_B),
+      newPlayer("玩家1"),
+      newPlayer("玩家2"),
     ],
+    // 📖 设计文档（第 17 / 195 / 366-368 行）：
+    //    「牌库：双方共用一副」「一副公共摸牌堆 + 一副公共弃牌堆」
+    //    「因为全部卡牌唯一 + 共用牌库，"数牌"推理是可行的
+    //      —— 对方用过的牌不会再次出现」
+    //    → 所以这里是**一副公共摸牌堆**（不是每人一副）
+    deck: shuffle(opts.deck || DECK_ALL_SRC.slice()),
     discard: [], // 共用弃牌堆
     turn: 1, // 全局回合数
     current: 0, // 当前行动的玩家索引
@@ -114,21 +123,16 @@ function log(g, msg) {
 function drawCards(g, p, n) {
   const got = [];
   for (let i = 0; i < n; i++) {
-    if (p.deck.length === 0) {
-      // 牌库空了：把"自己的牌"从共用弃牌堆里捞出来洗回去（各洗各的）
-      const mine = (p.myCards || []);
-      const back = [];
-      const keep = [];
-      for (const c of g.discard) {
-        if (mine.includes(c)) back.push(c);
-        else keep.push(c);
-      }
-      if (back.length === 0) break; // 自己没牌了，抽不到
-      p.deck = shuffle(back);
-      g.discard = keep; // 别人的牌留在弃牌堆
-      log(g, `${p.name} 的牌库空了，把自己的 ${back.length} 张弃牌洗回牌库`);
+    // 📖 设计文档第九节：
+    //    「摸牌堆为空时：弃牌堆洗牌 → 放回摸牌堆」
+    //    「注意：双方共用摸牌堆与弃牌堆」
+    if (g.deck.length === 0) {
+      if (g.discard.length === 0) break;      // 弃牌堆也空了 → 真的没牌可抽
+      g.deck = shuffle(g.discard.slice());
+      g.discard = [];
+      log(g, `摸牌堆空了 → 把弃牌堆的 ${g.deck.length} 张洗回去`);
     }
-    const c = p.deck.shift();
+    const c = g.deck.shift();
     p.hand.push(c);
     got.push(c);
     // 🔴 定时炸弹：一抽到就要处理（打出 或 丢掉吃 6 点）
@@ -248,7 +252,8 @@ function startTurn(g) {
   log(g, `—— 第 ${g.turn} 回合 · ${p.name} ——`);
 
   // ① 回合开始时结算：状态伤害、单位攻击、过期检查
-  resolveTurnStart(g, p, opp);
+  //    如果它产生了"要玩家决定"的窗口（焚烧：丢哪张牌），先把该给的给了再停
+  const startPending = resolveTurnStart(g, p, opp);
 
   if (g.phase === "ended") return;
 
@@ -256,6 +261,8 @@ function startTurn(g) {
   const n = p.drawPerTurn + (hasStatus(p, "奖励箱") ? 1 : 0);
   const got = drawCards(g, p, n);
   log(g, `${p.name} 抽了 ${got.length} 张牌`);
+  // ⚠️ 抽牌可能产生定时炸弹窗口 → 那就以它为准（炸弹更紧急）
+  const pendingAfterDraw = !!g.pending;
 
   // ③ 回能量
   let regen = p.regen;
@@ -300,6 +307,13 @@ function startTurn(g) {
   if (!g.pending && p.hand.indexOf("定时炸弹") >= 0) {
     g.pending = { kind: "timebomb", player: g.current };
     log(g, `${p.name} 手上有没处理的定时炸弹！必须处理`);
+    return;
+  }
+
+  // ⑨ 焚烧的"额外丢 1 张"放在最后问（炸弹更紧急）
+  //    📖 设计文档第 139 / 293 行：丢哪张由本人自选，不丢就扣 2 血
+  if (!g.pending && startPending === "burn" && p.hand.length > 0) {
+    g.pending = { kind: "burn_discard", player: g.current, reason: "焚烧" };
   }
 }
 
@@ -334,20 +348,21 @@ function resolveTurnStart(g, p, opp) {
   if (poison > 0) statusHit(poison, "中毒");
   if (g.phase === "ended") return;
 
-  // 焚烧：不丢 1 张牌就扣 2 血
+  // 焚烧：每回合须**额外丢 1 张牌（丢哪张由本人自选）**，否则扣 2 血
+  //   📖 设计文档第 139 行：「每回合须额外丢 1 张牌，否则扣 2 血（丢哪张由本人自选）」
+  //      第 293 行：「之后每回合对方须额外丢 1 张（**自选**），否则扣 2 血」
+  //   ⚠️ 之前是"自动丢掉手牌第 1 张"，玩家不能选 → 违反文档
+  //      现在：主流程会弹一个 burn_discard 窗口让玩家选（见 startTurn 第 ⑨ 步）
+  //      这里只负责返回"有焚烧要处理"这个信号；手上没牌就直接吃 2 点
+  let burnPending = false;
   if (hasStatus(p, "焚烧")) {
-    // 由玩家决定（简化：自动丢最贵的一张？不，这里交给决策）
-    // 为了先跑通，采用"如果手牌>0 就丢一张，否则扣血"
     if (p.hand.length > 0) {
-      const idx = 0;
-      const c = p.hand.splice(idx, 1)[0];
-      g.discard.push(c);
-      log(g, `${p.name} 因焚烧丢弃了 1 张牌`);
+      burnPending = true;     // 交给主流程弹窗口
     } else {
-      loseHp(g, p, 2, "焚烧");
+      loseHp(g, p, 2, "焚烧");   // 没牌可丢 → 直接吃 2 点
     }
   }
-  if (g.phase === "ended") return;
+  if (g.phase === "ended") return burnPending ? "burn" : null;
 
   // 末日：自己回合内未出牌则扣 2 血（在本回合结束时检查）
   // 八音盒诅咒：倒计时
@@ -382,6 +397,10 @@ function resolveTurnStart(g, p, opp) {
 
   // 状态过期（非永久的）
   p.statuses = p.statuses.filter((s) => s.turns === null || s.turns > 0);
+
+  // 返回"回合开始阶段有没有留下要玩家处理的窗口"
+  //   "burn" = 焚烧的"额外丢 1 张"还没决定（由 startTurn 第 ⑨ 步弹窗口）
+  return burnPending ? "burn" : null;
 }
 
 // ---------- 演出事件（给客户端播动画用） ----------
@@ -939,9 +958,12 @@ function execEffect(g, idx, card, opts) {
       return;
     }
     case "timebomb": {
-      opp.deck.unshift("定时炸弹");
-      log(g, `定时炸弹被放到了 ${opp.name} 的牌库顶`);
-      // 💣 演出：炸弹掉下来贴着对方牌库（第几轮决定它多"危险"）
+      // ⚠️ 改成"双方共用一副牌库"之后，不存在"对方的牌库顶"了
+      //    → 放到**公共牌库顶**：轮到谁抽谁就抽到（打完这回合后正好是对方先抽）
+      //      （要不要改成"锁定对方下次必抽到"，等你确认）
+      g.deck.unshift("定时炸弹");
+      log(g, `定时炸弹被放到牌库顶（${opp.name} 下回合先抽）`);
+      // 💣 演出：炸弹掉下来贴着牌库（第几轮决定它多"危险"）
       g.timeBombPlanted = (g.timeBombPlanted || 0) + 1;
       fxStatus(g, 1 - idx, "定时炸弹", "定时炸弹");
       g.fx[g.fx.length - 1].bombChoice = "plant";
@@ -1259,9 +1281,9 @@ function resolveTimeBomb(g, choice) {
     p.energy = floor05(p.energy - realCost);
     g.timeBombCount = (g.timeBombCount || 0) + 1;
     p.hand.splice(idx, 1);
-    const opp = g.players[1 - who];
-    opp.deck.unshift("定时炸弹");
-    log(g, `${p.name} 花 ${realCost} 能量把定时炸弹交给了 ${opp.name}（第 ${g.timeBombCount} 轮，下次要 ${timeBombCost(g)} 能量）`);
+    // ⚠️ 共用牌库 → 放到公共牌库顶（对方下回合先抽）
+    g.deck.unshift("定时炸弹");
+    log(g, `${p.name} 花 ${realCost} 能量把定时炸弹放回牌库顶（第 ${g.timeBombCount} 轮，下次要 ${timeBombCost(g)} 能量）`);
   }
   g.pending = null;
   // ⚠️ 只有"当前回合的玩家"处理完才算这一回合结束
@@ -1269,6 +1291,27 @@ function resolveTimeBomb(g, choice) {
   if (g.phase === "ended") return { ok: true };
   // 可能还有弃牌要处理
   if (endTurn(g) === true) return { ok: true };
+  return { ok: true };
+}
+
+// 焚烧的"额外丢 1 张"结算
+//   📖 设计文档第 139 / 293 行：丢哪张由本人自选；不丢就吃 2 血
+//   opts.card = 要丢的牌名；不传 / 传 null = 选择"不丢，吃 2 点"
+function resolveBurnDiscard(g, cardName) {
+  const who = (g.pending && g.pending.kind === "burn_discard" && g.pending.player !== undefined)
+    ? g.pending.player : g.current;
+  const p = g.players[who];
+  if (!p) { g.pending = null; return { ok: false, error: "找不到玩家" }; }
+  if (cardName && p.hand.includes(cardName)) {
+    p.hand.splice(p.hand.indexOf(cardName), 1);
+    g.discard.push(cardName);
+    log(g, `${p.name} 因焚烧丢掉了【${cardName}】`);
+  } else {
+    loseHp(g, p, 2, "焚烧");
+    log(g, `${p.name} 选择不丢牌 → 焚烧扣 2 血`);
+  }
+  g.pending = null;
+  // ⚠️ 换手只由服务器/引擎的回合流程负责，这里不动 g.current
   return { ok: true };
 }
 
@@ -1281,6 +1324,8 @@ module.exports = {
   endTurn,
   finishTurn,
   resolveDiscardToLimit,
+  resolveBurnDiscard,
+  timeBombCost,
   resolveTimeBomb,
   timeBombCost,
   resolveSpring,
